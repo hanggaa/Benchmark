@@ -1,0 +1,26 @@
+{
+  "id": "research_01_prd_structure",
+  "title": "PRD Generation with Strict Handoff Context",
+  "category": "research",
+  "difficulty": "medium",
+  "description": "Generate a structured PRD document following precise section headers and machine-readable handoff context.",
+  "prompt": "Generate a structured Product Requirement Document (PRD) for an AI developer tool called \"QueryLens\" (an AI SQL query optimizer and visual explainer).\n\nYou MUST organize your response strictly using the following Markdown sections:\n# PRD: QueryLens MVP\n## Project Overview & Core Concept\n## Target Persona & Key Pain Points\n## Core Functional Requirements (MVP)\n## Out of Scope (Not in MVP)\n## Tech Stack & Architecture Decisions\n## Handoff Context\n\nUnder `## Handoff Context`, provide exact key-value pairs formatted as:\n- Stage: prd\n- App name: QueryLens\n- User level: B\n- Target platform: web\n- Budget: under $100/month\n- Timeline: 4 weeks\n\nDo not omit any required section.",
+  "evaluator_type": "schema_check",
+  "expected_structure": {
+    "required_headings": [
+      "Project Overview & Core Concept",
+      "Target Persona & Key Pain Points",
+      "Core Functional Requirements (MVP)",
+      "Out of Scope (Not in MVP)",
+      "Tech Stack & Architecture Decisions",
+      "Handoff Context"
+    ],
+    "required_substrings": [
+      "QueryLens",
+      "Stage: prd",
+      "App name: QueryLens",
+      "User level: B",
+      "Target platform: web"
+    ]
+  }
+}

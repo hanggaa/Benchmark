@@ -1,0 +1,24 @@
+[
+  {
+    "case_id": "logic_02_topo_cycle",
+    "case_title": "Topological Batch Scheduler with Cycle Detection",
+    "category": "logic",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": true,
+    "duration_seconds": 7.094748,
+    "token_usage": {
+      "input_tokens": 17842,
+      "output_tokens": 2002,
+      "thinking_tokens": 1501,
+      "cache_read_tokens": 0,
+      "total_tokens": 19844,
+      "estimated_cost_usd": 0.028351
+    },
+    "raw_response": "```python\nclass CircularDependencyError(Exception):\n    \"\"\"Raised when a circular dependency is detected during resolution.\"\"\"\n    pass\n\n\nclass DependencyResolver:\n    @staticmethod\n    def resolve(dependencies: dict[str, list[str]]) -> list[list[str]]:\n        \"\"\"\n        Resolves task dependencies into execution stages/batches.\n\n        :param dependencies: Mapping of task_name -> list of task_names it depends on.\n        :return: A list of stages, where each stage is a sorted list of task names\n                 that can run in parallel.\n        :raises CircularDependencyError: If a cycle or self-dependency is detected.\n        \"\"\"\n        # Collect all tasks (including those only listed as prerequisites)\n        all_tasks = set(dependencies.keys())\n        for deps in dependencies.values():\n            all_tasks.update(deps)\n\n        if not all_tasks:\n            return []\n\n        # in_degree: count of remaining prerequisites for each task\n        # dependents: task -> list of tasks that depend on it\n        in_degree = {task: 0 for task in all_tasks}\n        dependents = {task: [] for task in all_tasks}\n\n        for task, deps in dependencies.items():\n            unique_deps = set(deps)\n            in_degree[task] = len(unique_deps)\n            for dep in unique_deps:\n                dependents[dep].append(task)\n\n        # Stage 0: tasks with no prerequisites\n        current_stage = [task for task, deg in in_degree.items() if deg == 0]\n        stages = []\n        resolved_count = 0\n\n        while current_stage:\n            current_stage.sort()\n            stages.append(current_stage)\n            resolved_count += len(current_stage)\n\n            next_stage = []\n            for task in current_stage:\n                for dependent in dependents[task]:\n                    in_degree[dependent] -= 1\n                    if in_degree[dependent] == 0:\n                        next_stage.append(dependent)\n\n            current_stage = next_stage\n\n        if resolved_count < len(all_tasks):\n            raise CircularDependencyError(\"Circular dependency detected.\")\n\n        return stages\n```\n",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": null,
+    "timestamp": 1787816543.065978
+  }
+]

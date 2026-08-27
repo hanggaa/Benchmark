@@ -1,0 +1,10 @@
+{
+  "id": "tool_01_surgical_refactor",
+  "title": "Surgical Connection Pool with Auto-Reconnection",
+  "category": "tool_use",
+  "difficulty": "medium",
+  "description": "Extend connection pool with healthcheck while preserving existing signatures.",
+  "prompt": "Implement a robust database connection pool wrapper in Python named `ResilientConnectionPool`.\nRequirements:\n1. `__init__(self, max_connections: int = 5, ping_timeout: float = 1.0)`\n2. `acquire() -> dict`: Returns an active connection object `{\"id\": int, \"alive\": bool}`. If no available connections, raise `RuntimeError(\"Pool exhausted\")`.\n3. `release(conn: dict) -> None`: Returns connection back to the pool.\n4. `health_check_and_heal() -> int`: Iterates over pool connections, checks if `conn[\"alive\"]` is False, recreates them with new alive connections, and returns the number of healed connections.\n5. `close_all() -> None`: Closes and empties the pool.\n\nProvide only valid python code inside a ```python ``` block.",
+  "evaluator_type": "python_unit_test",
+  "test_code": "\npool = ResilientConnectionPool(max_connections=3)\n\nc1 = pool.acquire()\nc2 = pool.acquire()\nc3 = pool.acquire()\n\nassert c1[\"alive\"] is True\nassert c2[\"alive\"] is True\nassert c3[\"alive\"] is True\n\ntry:\n    pool.acquire()\n    assert False, \"Should raise RuntimeError on exhausted pool\"\nexcept RuntimeError:\n    pass\n\n# Simulate connection failure on c1\nc1[\"alive\"] = False\npool.release(c1)\npool.release(c2)\npool.release(c3)\n\nhealed_count = pool.health_check_and_heal()\nassert healed_count == 1, f\"Expected 1 healed connection, got {healed_count}\"\n\n# Acquire again to verify new alive connection\nc_new = pool.acquire()\nassert c_new[\"alive\"] is True\n\npool.close_all()\nprint(\"All Resilient Pool tests passed!\")\n"
+}

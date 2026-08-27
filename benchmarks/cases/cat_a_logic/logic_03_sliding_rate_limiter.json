@@ -1,0 +1,10 @@
+{
+  "id": "logic_03_sliding_rate_limiter",
+  "title": "Sliding Window Log Rate Limiter",
+  "category": "logic",
+  "difficulty": "medium",
+  "description": "Implement precise sliding window rate limiting with retry-after calculation.",
+  "prompt": "Implement a thread-safe Python class `SlidingWindowRateLimiter`:\nRequirements:\n1. `__init__(self, max_requests: int, window_seconds: float)`\n2. `allow_request(self, key: str, timestamp: Optional[float] = None) -> tuple[bool, float]`:\n   - Returns `(is_allowed: bool, retry_after_seconds: float)`.\n   - If allowed: returns `(True, 0.0)`.\n   - If rate limited: returns `(False, retry_after)`. `retry_after` is how many seconds until at least 1 request slot frees up.\n3. `get_remaining(self, key: str, timestamp: Optional[float] = None) -> int`: Returns remaining requests available in current sliding window.\n\nProvide only valid python code inside a ```python ``` block.",
+  "evaluator_type": "python_unit_test",
+  "test_code": "\nlimiter = SlidingWindowRateLimiter(max_requests=2, window_seconds=10.0)\n\nt0 = 1000.0\n# Request 1 at t0\nallowed, retry = limiter.allow_request(\"user1\", timestamp=t0)\nassert allowed is True and retry == 0.0\nassert limiter.get_remaining(\"user1\", timestamp=t0) == 1\n\n# Request 2 at t0 + 2\nallowed, retry = limiter.allow_request(\"user1\", timestamp=t0 + 2.0)\nassert allowed is True and retry == 0.0\nassert limiter.get_remaining(\"user1\", timestamp=t0 + 2.0) == 0\n\n# Request 3 at t0 + 5 (should be rejected)\nallowed, retry = limiter.allow_request(\"user1\", timestamp=t0 + 5.0)\nassert allowed is False\n# First request was at 1000.0, so slot opens at 1010.0. Current is 1005.0 -> retry = 5.0\nassert abs(retry - 5.0) < 0.01, f\"Expected retry ~5.0, got {retry}\"\n\n# Request 4 at t0 + 11 (first request expired)\nallowed, retry = limiter.allow_request(\"user1\", timestamp=t0 + 11.0)\nassert allowed is True\n\nprint(\"All Rate Limiter tests passed!\")\n"
+}

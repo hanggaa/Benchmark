@@ -1,0 +1,24 @@
+[
+  {
+    "case_id": "logic_02_topo_cycle",
+    "case_title": "Topological Batch Scheduler with Cycle Detection",
+    "category": "logic",
+    "model": "gpt-5.6-terra",
+    "cli": "codex",
+    "passed": true,
+    "duration_seconds": 10.838352208000288,
+    "token_usage": {
+      "input_tokens": 22166,
+      "output_tokens": 240,
+      "thinking_tokens": 71,
+      "cache_read_tokens": 9984,
+      "total_tokens": 22406,
+      "estimated_cost_usd": 0.025595
+    },
+    "raw_response": "```python\nclass CircularDependencyError(Exception):\n    pass\n\n\nclass DependencyResolver:\n    def resolve(self, dependencies: dict[str, list[str]]) -> list[list[str]]:\n        tasks = set(dependencies)\n        for required_tasks in dependencies.values():\n            tasks.update(required_tasks)\n\n        remaining = {\n            task: set(dependencies.get(task, []))\n            for task in tasks\n        }\n        stages = []\n\n        while remaining:\n            ready = sorted(task for task, deps in remaining.items() if not deps)\n\n            if not ready:\n                raise CircularDependencyError(\"Circular dependency detected\")\n\n            stages.append(ready)\n\n            for task in ready:\n                del remaining[task]\n\n            completed = set(ready)\n            for deps in remaining.values():\n                deps.difference_update(completed)\n\n        return stages\n```",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787821815.021098
+  }
+]

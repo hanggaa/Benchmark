@@ -1,0 +1,46 @@
+[
+  {
+    "case_id": "logic_02_topo_cycle",
+    "case_title": "Topological Batch Scheduler with Cycle Detection",
+    "category": "logic",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": false,
+    "duration_seconds": 4.8668834170021,
+    "token_usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0,
+      "estimated_cost_usd": 0.0
+    },
+    "raw_response": "",
+    "error_message": "{\"conversation_id\":\"\",\"status\":\"ERROR\",\"response\":\"\",\"error\":\"invalid model selection (--model \\\"Gemini 3.7 Flash (High)\\\" --effort \\\"high\\\"): --effort is not supported for model \\\"Gemini 3.7 Flash (High)\\\"\",\"duration_seconds\":0,\"num_turns\":0,\"usage\":{\"input_tokens\":0,\"output_tokens\":0,\"thinking_tokens\":0,\"cache_read_tokens\":0,\"total_tokens\":0}}",
+    "evaluator_logs": "",
+    "effort": "high",
+    "timestamp": 1787819961.869714
+  },
+  {
+    "case_id": "logic_02_topo_cycle",
+    "case_title": "Topological Batch Scheduler with Cycle Detection",
+    "category": "logic",
+    "model": "gpt-5.6-sol",
+    "cli": "codex",
+    "passed": true,
+    "duration_seconds": 10.969784541997797,
+    "token_usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0,
+      "estimated_cost_usd": 0.0
+    },
+    "raw_response": "```python\nclass CircularDependencyError(Exception):\n    pass\n\n\nclass DependencyResolver:\n    def resolve(\n        self, dependencies: dict[str, list[str]]\n    ) -> list[list[str]]:\n        tasks = set(dependencies)\n        for required_tasks in dependencies.values():\n            tasks.update(required_tasks)\n\n        remaining = {\n            task: set(dependencies.get(task, []))\n            for task in tasks\n        }\n        stages: list[list[str]] = []\n\n        while remaining:\n            stage = sorted(\n                task for task, requirements in remaining.items()\n                if not requirements\n            )\n\n            if not stage:\n                raise CircularDependencyError(\n                    \"Circular dependency detected\"\n                )\n\n            stages.append(stage)\n            completed = set(stage)\n\n            for task in stage:\n                del remaining[task]\n\n            for requirements in remaining.values():\n                requirements.difference_update(completed)\n\n        return stages\n```",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787819972.8628218
+  }
+]

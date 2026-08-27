@@ -1,0 +1,10 @@
+{
+  "id": "logic_02_topo_cycle",
+  "title": "Topological Batch Scheduler with Cycle Detection",
+  "category": "logic",
+  "difficulty": "medium",
+  "description": "Compute parallel execution stages for a DAG or detect circular dependency paths.",
+  "prompt": "Implement a Python class `DependencyResolver` with custom exception `CircularDependencyError(Exception)`:\nRequirements:\n1. Method `resolve(dependencies: dict[str, list[str]]) -> list[list[str]]`\n   - `dependencies` maps task_name -> list of task_names it DEPENDS ON (must run before it).\n   - Returns a list of stages (batches). Each stage is a sorted list of task names that can run in parallel.\n   - If any circular dependency exists (e.g. A->B->A or self-loop A->A), raise `CircularDependencyError`.\n2. Tasks with no dependencies execute in stage 0.\n\nProvide only valid python code inside a ```python ``` block.",
+  "evaluator_type": "python_unit_test",
+  "test_code": "\nresolver = DependencyResolver()\n\n# Test 1: Simple DAG\ndeps1 = {\n    \"build\": [],\n    \"lint\": [],\n    \"test\": [\"build\", \"lint\"],\n    \"package\": [\"test\"],\n    \"deploy\": [\"package\"]\n}\nstages = resolver.resolve(deps1)\nassert stages[0] == [\"build\", \"lint\"], f\"Stage 0 failed: {stages[0]}\"\nassert stages[1] == [\"test\"], f\"Stage 1 failed: {stages[1]}\"\nassert stages[2] == [\"package\"], f\"Stage 2 failed: {stages[2]}\"\nassert stages[3] == [\"deploy\"], f\"Stage 3 failed: {stages[3]}\"\n\n# Test 2: Cycle detection\ndeps_cycle = {\n    \"A\": [\"B\"],\n    \"B\": [\"C\"],\n    \"C\": [\"A\"]\n}\ntry:\n    resolver.resolve(deps_cycle)\n    assert False, \"Should have raised CircularDependencyError\"\nexcept CircularDependencyError:\n    pass\n\n# Test 3: Self-loop\ndeps_self = {\"A\": [\"A\"]}\ntry:\n    resolver.resolve(deps_self)\n    assert False, \"Should have raised CircularDependencyError for self loop\"\nexcept CircularDependencyError:\n    pass\n\nprint(\"All Topo Cycle tests passed!\")\n"
+}

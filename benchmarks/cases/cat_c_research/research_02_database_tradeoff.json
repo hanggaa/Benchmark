@@ -1,0 +1,21 @@
+{
+  "id": "research_02_database_tradeoff",
+  "title": "Vector Database Tradeoff & Pricing Comparison Matrix",
+  "category": "research",
+  "difficulty": "medium",
+  "description": "Produce a comparative matrix between pgvector, Qdrant, and Pinecone with cost projections.",
+  "prompt": "Provide a comprehensive technical comparison for vector search engines supporting a 10-million vector workload (1536 dimensions): pgvector (PostgreSQL), Qdrant, and Pinecone.\n\nYou MUST include:\n1. A Markdown table with EXACT columns: `| Engine | Architecture Type | Estimated Monthly Cost | Latency p95 | Key Pros | Key Cons |`\n2. Rows for `pgvector`, `Qdrant`, and `Pinecone`.\n3. Specific dollar estimates ($) in the cost column.\n4. A concluding section with heading `## Recommendation Matrix`.\n",
+  "evaluator_type": "schema_check",
+  "expected_structure": {
+    "required_headings": [
+      "Recommendation Matrix"
+    ],
+    "required_substrings": [
+      "| Engine |",
+      "pgvector",
+      "Qdrant",
+      "Pinecone",
+      "$"
+    ]
+  }
+}

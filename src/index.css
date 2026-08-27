@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  border-radius: 0px !important; /* Industrial Brutalism Rule: Absolute rejection of border-radius */
+}
+
+body {
+  margin: 0;
+  background-color: #0A0A0A;
+  color: #EAEAEA;
+  overflow-x: hidden;
+  font-family: 'Geist Mono', 'IBM Plex Mono', monospace;
+}
+
+/* CRT Scanline effect (Simulated Hardware Limitation) */
+.scanlines-overlay {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.25) 2px,
+    rgba(0, 0, 0, 0.25) 4px
+  );
+  pointer-events: none;
+}
+
+/* Industrial Warning Stripe */
+.hazard-stripe-bar {
+  background: repeating-linear-gradient(
+    -45deg,
+    #FF2A2A,
+    #FF2A2A 12px,
+    #0A0A0A 12px,
+    #0A0A0A 24px
+  );
+}
+
+/* Mechanical Brutalist Button */
+.btn-brutalist {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #3E3E44;
+  background-color: #111113;
+  color: #EAEAEA;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 10px 20px;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-brutalist:hover {
+  background-color: #FF2A2A;
+  color: #000000;
+  border-color: #FF2A2A;
+}
+
+.btn-brutalist-red {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #FF2A2A;
+  background-color: #FF2A2A;
+  color: #000000;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 10px 20px;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-brutalist-red:hover {
+  background-color: #EAEAEA;
+  color: #000000;
+  border-color: #EAEAEA;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A2A2E;
+  border: 1px solid #3E3E44;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #FF2A2A;
+}
