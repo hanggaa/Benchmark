@@ -14,7 +14,7 @@ Mengukur performa secara empiris berdasarkan **4 Pilar Utama**:
 
 ```text
 benchmarks/
-├── cases/                     # Kumpulan 9 skenario pengujian & hidden tests
+├── cases/                     # Kumpulan 14 skenario pengujian & hidden tests
 │   ├── cat_a_logic/           # Algoritma, LRU Cache TTL, Topo DAG, Async Worker Pool
 │   ├── cat_b_bugfix/          # Perbaikan bug keamanan JWT & ReDoS Linearization
 │   ├── cat_c_research/        # Validasi struktur PRD & Matrix DB Tradeoffs
@@ -132,6 +132,17 @@ Gunakan flag `--case <case_id>`:
 python3 -m benchmarks.runner \
   --models "Gemini 3.7 Flash (High), gpt-5.6-sol --effort high" \
   --case logic_04_async_worker_pool
+```
+
+---
+
+### 6. Menyesuaikan Batas Waktu Toleransi (Timeout Override)
+Secara default batas waktu pengujian adalah **300 detik (5 menit)** per soal agar model reasoning mendalam tidak terpotong. Anda dapat menaikkannya sesuka hati dengan `--timeout`:
+```bash
+# Menyetel toleransi timeout ke 480 detik (8 menit) untuk soal sangat berat
+python3 -m benchmarks.runner \
+  --models "Gemini 3.7 Flash (High), gpt-5.6-terra --effort high" \
+  --timeout 480
 ```
 
 ---

@@ -9,6 +9,34 @@ interface CaseInspectorModalProps {
 export const CaseInspectorModal: React.FC<CaseInspectorModalProps> = ({ item, onClose }) => {
   if (!item) return null;
 
+  const getStatusBadge = () => {
+    if (item.passed) {
+      return {
+        label: '✓ MISSION VERIFIED',
+        cls: 'bg-telemetry-green text-black',
+      };
+    }
+    const combinedLogs = `${item.error_message || ''} ${item.evaluator_logs || ''} ${item.raw_response || ''}`.toLowerCase();
+    if (combinedLogs.includes('timeout') || combinedLogs.includes('timed out') || item.duration_seconds >= 120) {
+      return {
+        label: '⏱️ PROCESS TIMEOUT',
+        cls: 'bg-amber-400 text-black',
+      };
+    }
+    if (combinedLogs.includes('sorry') || combinedLogs.includes('cannot fulfill') || combinedLogs.includes('unable to write') || combinedLogs.includes("can't help") || combinedLogs.includes('cannot help')) {
+      return {
+        label: '🛡️ GUARDRAIL REFUSAL',
+        cls: 'bg-purple-600 text-white',
+      };
+    }
+    return {
+      label: '✗ LOGIC / ASSERTION FAILURE',
+      cls: 'bg-hazard-red text-black',
+    };
+  };
+
+  const badge = getStatusBadge();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm font-mono">
       <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col border border-hazard-red bg-substrate-card text-phosphor-white p-6 overflow-hidden">
@@ -23,10 +51,8 @@ export const CaseInspectorModal: React.FC<CaseInspectorModalProps> = ({ item, on
         <div className="flex items-start justify-between gap-4 border-b border-substrate-border pb-4 mb-4 shrink-0">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className={`px-2 py-0.5 text-xs font-bold uppercase ${
-                item.passed ? 'bg-telemetry-green text-black' : 'bg-hazard-red text-black'
-              }`}>
-                {item.passed ? '✓ MISSION VERIFIED' : '✗ TELEMETRY FAILURE'}
+              <span className={`px-2 py-0.5 text-xs font-bold uppercase ${badge.cls}`}>
+                {badge.label}
               </span>
               <span className="text-[10px] border border-substrate-borderStrong px-2 py-0.5 uppercase text-phosphor-dim">
                 MODULE: {item.category.toUpperCase()}

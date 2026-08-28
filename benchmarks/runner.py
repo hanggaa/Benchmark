@@ -187,7 +187,10 @@ def run_benchmark(
     for c_cli, c_model, c_effort in execution_plan:
         effort_str = f" [Effort: {c_effort}]" if c_effort else ""
         print(f"   ↳ Model: '{c_model}'{effort_str} via CLI: '{c_cli}'")
+    timeout_display = f"• Global Timeout: {timeout_override}s\n" if timeout_override else ""
     print(f"• Test Cases: {len(test_cases)} case(s)")
+    if timeout_display:
+        print(timeout_display, end="")
     print("=" * 70)
 
     results: List[BenchmarkResult] = []
@@ -214,11 +217,13 @@ def run_benchmark(
                 print("⏩ SKIPPED (Dry Run)")
                 continue
 
+            current_timeout = timeout_override or tc.timeout_seconds
+
             resp, tokens, duration, err = runner.run_prompt(
                 prompt=tc.prompt,
                 model=model,
                 effort=model_effort,
-                timeout_seconds=tc.timeout_seconds,
+                timeout_seconds=current_timeout,
             )
 
             if err:
@@ -319,6 +324,7 @@ def main():
     parser.add_argument("--effort", default=None, help="Reasoning effort (low, medium, high)")
     parser.add_argument("--category", default=None, help="Filter by category (logic, bugfix, research, tool_use)")
     parser.add_argument("--case", default=None, help="Filter by specific case ID")
+    parser.add_argument("--timeout", type=int, default=None, help="Global timeout limit in seconds (e.g. 300, 360, 480)")
     parser.add_argument("--output-dir", default=None, help="Output directory for reports")
     parser.add_argument("--dry-run", action="store_true", help="List test cases without executing LLM calls")
 
@@ -335,6 +341,7 @@ def main():
         effort=args.effort,
         categories=categories,
         case_ids=case_ids,
+        timeout_override=args.timeout,
         output_dir=args.output_dir,
         dry_run=args.dry_run,
     )

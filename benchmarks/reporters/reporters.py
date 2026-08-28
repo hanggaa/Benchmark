@@ -37,10 +37,15 @@ class MarkdownReporter:
             total_in = sum(x.token_usage.input_tokens for x in items)
             total_out = sum(x.token_usage.output_tokens for x in items)
             total_think = sum(x.token_usage.thinking_tokens for x in items)
-            total_cost = round(sum(x.token_usage.estimated_cost_usd for x in items), 6)
-            
-            # Efficiency score: higher pass rate & lower cost is better
-            eff_score = round((pass_rate) / (total_cost + 0.005), 1)
+            # Timeout penalty to prevent artificial inflation from incomplete runs
+            timeout_count = sum(
+                1 for x in items 
+                if "TIMEOUT" in (x.error_message or "") or "Timed out" in (x.error_message or "")
+            )
+            timeout_penalty = timeout_count * 0.05
+
+            # Quadratic Accuracy Efficiency Index: (PassRate^2 / 100) / (Cost + TimeoutPenalty + 0.005)
+            eff_score = round(((pass_rate ** 2) / 100.0) / (total_cost + timeout_penalty + 0.005), 1)
 
             summaries.append(
                 ModelSummary(

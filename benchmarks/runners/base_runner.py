@@ -24,7 +24,7 @@ class BaseRunner(abc.ABC):
         prompt: str,
         model: str,
         effort: Optional[str] = None,
-        timeout_seconds: int = 180,
+        timeout_seconds: int = 300,
         cwd: Optional[str] = None,
     ) -> Tuple[str, TokenUsage, float, Optional[str]]:
         """
@@ -33,6 +33,15 @@ class BaseRunner(abc.ABC):
             (response_text, token_usage, duration_seconds, error_message)
         """
         pass
+
+    def estimate_prompt_tokens(self, prompt: str) -> int:
+        """
+        Estimates the baseline input tokens consumed when sending a prompt to an agent CLI harness.
+        Agent CLIs load system instructions and repository tools (~15,000-20,000 baseline tokens)
+        in addition to the user prompt text.
+        """
+        char_tokens = max(len(prompt) // 4, 500)
+        return char_tokens + 15000
 
     def get_pricing(self, model: str) -> Dict[str, float]:
         """

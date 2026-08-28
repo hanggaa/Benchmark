@@ -3,7 +3,7 @@
   "title": "CTF / Security: SQL Injection AST Firewall & Payload Interceptor",
   "category": "bugfix",
   "difficulty": "hard",
-  "timeout_seconds": 180,
+  "timeout_seconds": 300,
   "description": "Implement an intelligent SQL security inspection engine that detects advanced SQL injection vectors without triggering false positives on complex legitimate queries.",
   "prompt": "Implement a robust Python security function `is_safe_sql_query(query: str) -> tuple[bool, str]`.\n\nRequirements:\n1. Returns `(False, \"REASON\")` if the query contains any of the following malicious SQL injection signatures:\n   - Boolean/Tautology injection (e.g., `' OR '1'='1'`, `\" OR 1=1 --`, `admin'--`)\n   - Stacked query execution (e.g., `; DROP TABLE`, `; EXEC xp_cmdshell`, `; DELETE FROM`)\n   - UNION-based data exfiltration (e.g., `UNION SELECT`, `UNION ALL SELECT`)\n   - Time-based blind execution (e.g., `pg_sleep(`, `WAITFOR DELAY`, `BENCHMARK(`)\n   - Obfuscation / inline comment evasion (e.g., `/*!50000SELECT*/`, `UN/**/ION`)\n2. Returns `(True, \"SAFE\")` for legitimate SQL queries, including complex modern queries:\n   - JSON extraction operators (e.g., `SELECT data->>'user_id' FROM events`)\n   - Window functions (e.g., `SELECT id, AVG(amount) OVER (PARTITION BY category) FROM sales`)\n   - Legitimate text containing words like 'union', 'delay', or 'sleep' inside quoted string values (e.g., `WHERE status = 'delayed'` or `WHERE description = 'unionized employees'`)\n3. Case-insensitive inspection with normalized whitespace handling.\n\nProvide only valid Python code inside a ```python ``` block containing `is_safe_sql_query`.",
   "evaluator_type": "python_unit_test",

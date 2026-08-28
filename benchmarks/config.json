@@ -1,5 +1,5 @@
 {
-  "default_timeout_seconds": 180,
+  "default_timeout_seconds": 300,
   "pricing_per_1m_tokens": {
     "gemini-3.7-flash": {
       "input": 0.75,

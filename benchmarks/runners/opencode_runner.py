@@ -21,7 +21,7 @@ class OpenCodeRunner(BaseRunner):
         prompt: str,
         model: str,
         effort: Optional[str] = None,
-        timeout_seconds: int = 180,
+        timeout_seconds: int = 300,
         cwd: Optional[str] = None,
     ) -> Tuple[str, TokenUsage, float, Optional[str]]:
         cmd = [
@@ -67,7 +67,10 @@ class OpenCodeRunner(BaseRunner):
 
         except subprocess.TimeoutExpired:
             duration = time.perf_counter() - start_time
-            return "", token_usage, duration, f"Timed out after {timeout_seconds}s"
+            token_usage.input_tokens = self.estimate_prompt_tokens(prompt)
+            token_usage.total_tokens = token_usage.input_tokens
+            token_usage.calculate_cost(pricing)
+            return "", token_usage, duration, f"TIMEOUT: Process exceeded {timeout_seconds}s limit"
         except Exception as e:
             duration = time.perf_counter() - start_time
             return "", token_usage, duration, str(e)

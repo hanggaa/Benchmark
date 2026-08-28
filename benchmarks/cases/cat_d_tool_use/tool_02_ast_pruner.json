@@ -3,7 +3,7 @@
   "title": "AST-Based Surgical Code Refactoring & Dead Import Pruner",
   "category": "tool_use",
   "difficulty": "hard",
-  "timeout_seconds": 180,
+  "timeout_seconds": 300,
   "description": "Implement a surgical Python AST refactoring utility that statically detects and prunes unused imports and dead private functions while preserving docstrings and public symbols.",
   "prompt": "Implement a Python refactoring function `prune_dead_code_and_imports(source_code: str) -> str` using Python's `ast` module:\n\nRequirements:\n1. Prune Unused Imports:\n   - If an entire import (e.g., `import math` or `import sys`) is never referenced in the AST body, remove it.\n   - If a composite from-import (e.g., `from os import path, getcwd, environ`) has unused names (e.g., `path` and `environ` unused, only `getcwd` used), rewrite the statement to import only used names (`from os import getcwd`). If all names in the from-import are unused, remove the statement entirely.\n2. Prune Dead Private Functions:\n   - Remove top-level functions whose names start with `_` (e.g. `def _helper():`) IF their name is never referenced anywhere else in the code.\n   - Do NOT remove public functions (functions not starting with `_`), even if uncalled.\n3. Preservation Guarantees:\n   - Must preserve module docstrings, class definitions, and global variable assignments.\n   - Must return syntactically valid Python code that compiles without errors via `compile()`.\n\nProvide only valid Python code inside a ```python ``` block containing `prune_dead_code_and_imports`.",
   "evaluator_type": "python_unit_test",

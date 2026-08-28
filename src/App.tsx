@@ -44,7 +44,13 @@ export function App() {
       const totalThink = items.reduce((acc, i) => acc + (i.token_usage?.thinking_tokens || 0), 0);
       const totalCost = Math.round(items.reduce((acc, i) => acc + (i.token_usage?.estimated_cost_usd || 0), 0) * 100000) / 100000;
       
-      const effScore = Math.round((passRate) / (totalCost + 0.005));
+      const timeoutCount = items.filter(
+        (it) => it.error_message?.includes('TIMEOUT') || it.error_message?.includes('Timed out') || (!it.passed && it.duration_seconds >= 120)
+      ).length;
+      const timeoutPenalty = timeoutCount * 0.05;
+
+      // Quadratic Accuracy Efficiency Index: (PassRate^2 / 100) / (Cost + TimeoutPenalty + 0.005)
+      const effScore = Math.round(((passRate * passRate) / 100.0) / (totalCost + timeoutPenalty + 0.005));
 
       const categoryMap: Record<string, { passed: number; total: number; rate: number }> = {};
       items.forEach((it) => {
@@ -75,7 +81,7 @@ export function App() {
       });
     });
 
-    return res.sort((a, b) => b.efficiency_score - a.efficiency_score);
+    return res.sort((a, b) => b.pass_rate - a.pass_rate || b.efficiency_score - a.efficiency_score);
   }, [benchmarkItems]);
 
   const topModel = summaries.length > 0 ? summaries[0] : null;

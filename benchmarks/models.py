@@ -34,7 +34,7 @@ class TestCase:
     evaluator_type: str  # 'python_unit_test', 'schema_check', 'string_contains'
     test_code: str = ''
     expected_structure: Dict[str, Any] = field(default_factory=dict)
-    timeout_seconds: int = 120
+    timeout_seconds: int = 300
     difficulty: str = 'medium'  # 'easy', 'medium', 'hard'
 
 
