@@ -136,7 +136,7 @@ python3 -m benchmarks.runner \
 
 ---
 
-## 📋 Daftar 9 Skenario Kasus Uji Bawaan
+## 📋 Daftar 14 Skenario Kasus Uji Bawaan
 
 | ID Kasus | Kategori | Tingkat Kesulitan | Aspek Kritis yang Diuji |
 | :--- | :--- | :---: | :--- |
@@ -144,11 +144,16 @@ python3 -m benchmarks.runner \
 | `logic_02_topo_cycle` | Logic & Algo | Medium | Topological DAG Batching & Circular Dependency Detection |
 | `logic_03_sliding_rate_limiter` | Logic & Algo | Medium | Sliding Window Log Rate Limiter & Boundary Calculation |
 | `logic_04_async_worker_pool` | Logic & Algo | Hard | `asyncio` Priority Worker Pool, Graceful Drain & Cancel |
+| `logic_05_raft_quorum` | Logic & Algo | Hard | Distributed Quorum State Machine, Minority Reject & Split-Brain |
+| `logic_06_zero_copy_parser` | Logic & Algo | Hard | Zero-Copy Streaming Binary Frame Parser, Fragments & CRC32 |
 | `bugfix_01_jwt_verifier` | Bugfix / Sec | Medium | JWT `none` Algorithm Attack & Exact Expiration Boundary |
 | `bugfix_02_redos_defense` | Bugfix / Sec | Hard | Catastrophic ReDoS Backtracking Attack & Linearization ($O(N)$) |
+| `sec_ctf_01_keygen` | CTF / Security | Hard | Reverse Engineering Obfuscated Bitwise Hash & License Keygen |
+| `sec_ctf_02_sql_ast_firewall` | CTF / Security | Hard | Zero-Day SQLi Payload Interceptor & AST False-Positive Immunity |
 | `research_01_prd_structure` | Research / Doc | Medium | PRD Schema Validation & Exact `## Handoff Context` Block |
 | `research_02_database_tradeoff` | Research / Doc | Medium | Vector DB 10M Matrix (pgvector vs Qdrant vs Pinecone) |
 | `tool_01_surgical_refactor` | Tool Use | Medium | Surgical Connection Pool Healthcheck & Signature Parity |
+| `tool_02_ast_pruner` | Tool Use | Hard | AST Dead Import Pruning, Private Function Stripping & Docstring Preservation |
 
 ---
 

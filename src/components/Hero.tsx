@@ -70,7 +70,7 @@ export const Hero: React.FC<HeroProps> = () => {
             // METRIC 01: SUITE SIZE
           </div>
           <div className="text-xl sm:text-2xl font-bold uppercase text-phosphor-white tracking-wide">
-            09 SCENARIOS
+            14 SCENARIOS
           </div>
           <div className="text-[10px] text-phosphor-dim mt-1 uppercase">
             HIDDEN UNIT ASSERTIONS

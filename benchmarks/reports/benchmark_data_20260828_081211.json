@@ -1,0 +1,112 @@
+[
+  {
+    "case_id": "logic_05_raft_quorum",
+    "case_title": "Distributed Consensus: Quorum State Machine & Split-Brain Handler",
+    "category": "logic",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": true,
+    "duration_seconds": 11.677095,
+    "token_usage": {
+      "input_tokens": 18099,
+      "output_tokens": 4321,
+      "thinking_tokens": 3324,
+      "cache_read_tokens": 0,
+      "total_tokens": 22420,
+      "estimated_cost_usd": 0.042243
+    },
+    "raw_response": "```python\nfrom typing import Any\n\n\nclass QuorumCluster:\n    \"\"\"Coordinates distributed consensus across a cluster of N nodes using quorum-based consistency.\"\"\"\n\n    def __init__(self, node_ids: list[str]) -> None:\n        \"\"\"\n        Initializes cluster state with given unique node IDs.\n        Quorum threshold is floor(N / 2) + 1.\n        \"\"\"\n        self.node_ids: list[str] = list(node_ids)\n        self.n: int = len(self.node_ids)\n        self.quorum_threshold: int = (self.n // 2) + 1\n\n        # Store per-node state: node_id -> {key: (version, value)}\n        self._node_store: dict[str, dict[str, tuple[int, Any]]] = {\n            node_id: {} for node_id in self.node_ids\n        }\n        # Logical timestamp/version counter for total write ordering\n        self._version_counter: int = 0\n        # Active network partitions represented as a list of disjoint node sets\n        self._partitions: list[set[str]] = [set(self.node_ids)]\n\n    def _get_partition(self, node_id: str) -> set[str]:\n        \"\"\"Returns the partition set containing the specified node.\"\"\"\n        for part in self._partitions:\n            if node_id in part:\n                return part\n        return {node_id}\n\n    def partition(self, group_a: list[str], group_b: list[str]) -> None:\n        \"\"\"\n        Divides cluster into isolated network partitions where group_a can only talk\n        to group_a, and group_b only to group_b. Any unassigned nodes remain isolated.\n        \"\"\"\n        set_a = set(group_a)\n        set_b = set(group_b)\n        partitions: list[set[str]] = [set_a, set_b]\n\n        assigned_nodes = set_a | set_b\n        for node in self.node_ids:\n            if node not in assigned_nodes:\n                partitions.append({node})\n\n        self._partitions = partitions\n\n    def heal_partition(self) -> None:\n        \"\"\"\n        Restores full network connectivity and synchronizes committed state\n        across all nodes by propagating the latest version of each key.\n        \"\"\"\n        # Restore full connectivity across all nodes\n        self._partitions = [set(self.node_ids)]\n\n        # Determine the latest committed version for each key across the cluster\n        latest_state: dict[str, tuple[int, Any]] = {}\n        for node_id in self.node_ids:\n            for key, (ver, val) in self._node_store[node_id].items():\n                if key not in latest_state or ver > latest_state[key][0]:\n                    latest_state[key] = (ver, val)\n\n        # Synchronize committed state to every node in the cluster\n        for node_id in self.node_ids:\n            self._node_store[node_id] = dict(latest_state)\n\n    def propose_write(self, from_node: str, key: str, value: Any) -> bool:\n        \"\"\"\n        Proposes a write from from_node.\n        Commits and updates all nodes in the partition if partition size >= quorum threshold.\n        Rejects write if in a minority partition.\n        \"\"\"\n        if from_node not in self._node_store:\n            return False\n\n        partition = self._get_partition(from_node)\n        if len(partition) >= self.quorum_threshold:\n            self._version_counter += 1\n            entry = (self._version_counter, value)\n            for node in partition:\n                if node in self._node_store:\n                    self._node_store[node][key] = entry\n            return True\n\n        return False\n\n    def read_value(self, from_node: str, key: str) -> Any:\n        \"\"\"\n        Returns the committed value for key on from_node (or None if not set).\n        \"\"\"\n        if from_node not in self._node_store:\n            return None\n\n        node_data = self._node_store[from_node]\n        if key in node_data:\n            return node_data[key][1]\n\n        return None\n```\n",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787879263.4885068
+  },
+  {
+    "case_id": "logic_06_zero_copy_parser",
+    "case_title": "Zero-Copy Streaming Binary Packet Frame Parser with CRC32",
+    "category": "logic",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": true,
+    "duration_seconds": 13.108405,
+    "token_usage": {
+      "input_tokens": 17973,
+      "output_tokens": 5104,
+      "thinking_tokens": 4369,
+      "cache_read_tokens": 0,
+      "total_tokens": 23077,
+      "estimated_cost_usd": 0.049004
+    },
+    "raw_response": "```python\nimport struct\nimport zlib\n\n\nclass BinaryFrameParser:\n    \"\"\"Streaming binary protocol parser with frame resynchronization and CRC32 verification.\"\"\"\n\n    MAGIC = b\"\\x53\\x58\"  # ASCII 'SX'\n    HEADER_SIZE = 8       # 2 bytes Magic + 2 bytes Type + 4 bytes Length\n    CRC_SIZE = 4          # 4 bytes CRC32\n\n    def __init__(self) -> None:\n        self._buffer = bytearray()\n\n    def feed(self, data: bytes) -> list[tuple[int, bytes]]:\n        \"\"\"\n        Ingests an incoming arbitrary chunk of bytes and returns a list of\n        (msg_type, payload) tuples for all fully received and verified packets.\n        \"\"\"\n        if data:\n            self._buffer.extend(data)\n\n        frames: list[tuple[int, bytes]] = []\n\n        while True:\n            # 1. Search for the magic header marker\n            magic_idx = self._buffer.find(self.MAGIC)\n            if magic_idx == -1:\n                # If no magic marker is present, discard everything except\n                # a potential trailing first byte of the magic marker (b'\\x53')\n                if len(self._buffer) > 0 and self._buffer[-1:] == self.MAGIC[:1]:\n                    del self._buffer[:-1]\n                else:\n                    self._buffer.clear()\n                break\n\n            # 2. Discard any leading garbage/corrupted data prior to the magic header\n            if magic_idx > 0:\n                del self._buffer[:magic_idx]\n\n            # 3. Check if the fixed header is fully available\n            if len(self._buffer) < self.HEADER_SIZE:\n                break\n\n            # 4. Parse Message Type (offset 2..4) and Payload Length (offset 4..8)\n            msg_type, payload_len = struct.unpack_from(\">HI\", self._buffer, 2)\n            total_frame_len = self.HEADER_SIZE + payload_len + self.CRC_SIZE\n\n            # 5. Check if the full frame (header + payload + CRC32) has arrived\n            if len(self._buffer) < total_frame_len:\n                break\n\n            # 6. Verify CRC32 checksum over: type_bytes + length_bytes + payload\n            crc_data = self._buffer[2 : self.HEADER_SIZE + payload_len]\n            expected_crc = zlib.crc32(crc_data) & 0xFFFFFFFF\n            received_crc = struct.unpack_from(\n                \">I\", self._buffer, self.HEADER_SIZE + payload_len\n            )[0]\n\n            if expected_crc == received_crc:\n                # Valid frame: extract payload and consume frame from buffer\n                payload = bytes(\n                    self._buffer[self.HEADER_SIZE : self.HEADER_SIZE + payload_len]\n                )\n                frames.append((msg_type, payload))\n                del self._buffer[:total_frame_len]\n            else:\n                # Corrupted frame: discard the current magic bytes to resynchronize\n                del self._buffer[: len(self.MAGIC)]\n\n        return frames\n```\n",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787879281.367334
+  },
+  {
+    "case_id": "sec_ctf_01_keygen",
+    "case_title": "CTF: Reverse Engineer Obfuscated License Key Validator & Keygen",
+    "category": "bugfix",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": true,
+    "duration_seconds": 5.069168,
+    "token_usage": {
+      "input_tokens": 18120,
+      "output_tokens": 1672,
+      "thinking_tokens": 1111,
+      "cache_read_tokens": 0,
+      "total_tokens": 19792,
+      "estimated_cost_usd": 0.024026
+    },
+    "raw_response": "```python\ndef generate_license(username: str) -> str:\n    \"\"\"Generates a valid license key for a given username.\"\"\"\n    # Seed from username\n    seed = 0x5A5A\n    for ch in username:\n        seed = ((seed << 5) - seed + ord(ch)) & 0xFFFF\n\n    # Derive key blocks from invariants\n    b1 = 0xBEEF ^ seed\n    b2 = 0xCAFE ^ ((b1 * 31 + 0x1337) & 0xFFFF)\n    b3 = 0xFEED ^ ((b2 * 17 + 0x7331) & 0xFFFF)\n    b4 = (0x1337 - (b1 + b2 + b3)) & 0xFFFF\n\n    return f\"{b1:04X}-{b2:04X}-{b3:04X}-{b4:04X}\"\n\n\ndef verify_license(username: str, license_key: str) -> bool:\n    \"\"\"Validates license key format: XXXX-XXXX-XXXX-XXXX\"\"\"\n    parts = license_key.strip().split(\"-\")\n    if len(parts) != 4 or any(len(p) != 4 for p in parts):\n        return False\n    try:\n        b1 = int(parts[0], 16)\n        b2 = int(parts[1], 16)\n        b3 = int(parts[2], 16)\n        b4 = int(parts[3], 16)\n    except ValueError:\n        return False\n    \n    # Seed from username\n    seed = 0x5A5A\n    for ch in username:\n        seed = ((seed << 5) - seed + ord(ch)) & 0xFFFF\n    \n    # Check mathematical invariants\n    if (b1 ^ seed) != 0xBEEF:\n        return False\n    if (b2 ^ ((b1 * 31 + 0x1337) & 0xFFFF)) != 0xCAFE:\n        return False\n    if (b3 ^ ((b2 * 17 + 0x7331) & 0xFFFF)) != 0xFEED:\n        return False\n    if ((b1 + b2 + b3 + b4) & 0xFFFF) != 0x1337:\n        return False\n    return True\n```\n",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787879291.23999
+  },
+  {
+    "case_id": "sec_ctf_02_sql_ast_firewall",
+    "case_title": "CTF / Security: SQL Injection AST Firewall & Payload Interceptor",
+    "category": "bugfix",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": false,
+    "duration_seconds": 120.00961716699999,
+    "token_usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0,
+      "estimated_cost_usd": 0.0
+    },
+    "raw_response": "",
+    "error_message": "Timed out after 120s",
+    "evaluator_logs": "",
+    "effort": "high",
+    "timestamp": 1787879411.256276
+  },
+  {
+    "case_id": "tool_02_ast_pruner",
+    "case_title": "AST-Based Surgical Code Refactoring & Dead Import Pruner",
+    "category": "tool_use",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": false,
+    "duration_seconds": 120.00971595799979,
+    "token_usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thinking_tokens": 0,
+      "cache_read_tokens": 0,
+      "total_tokens": 0,
+      "estimated_cost_usd": 0.0
+    },
+    "raw_response": "",
+    "error_message": "Timed out after 120s",
+    "evaluator_logs": "",
+    "effort": "high",
+    "timestamp": 1787879531.266491
+  }
+]
