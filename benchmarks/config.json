@@ -2,81 +2,99 @@
   "default_timeout_seconds": 180,
   "pricing_per_1m_tokens": {
     "gemini-3.7-flash": {
-      "input": 0.15,
-      "output": 0.6,
-      "thinking": 0.6,
-      "cache_read": 0.0375
+      "input": 0.75,
+      "output": 3.75,
+      "thinking": 3.75,
+      "cache_read": 0.1875
     },
-    "gemini-2.5-flash": {
-      "input": 0.1,
-      "output": 0.4,
-      "thinking": 0.4,
-      "cache_read": 0.025
+    "gemini-3.6-flash": {
+      "input": 1.50,
+      "output": 7.50,
+      "thinking": 7.50,
+      "cache_read": 0.375
     },
     "gemini-3.5-flash": {
-      "input": 0.15,
-      "output": 0.6,
-      "thinking": 0.6,
-      "cache_read": 0.0375
+      "input": 1.50,
+      "output": 9.00,
+      "thinking": 9.00,
+      "cache_read": 0.375
+    },
+    "gemini-3.1-pro": {
+      "input": 2.50,
+      "output": 15.00,
+      "thinking": 15.00,
+      "cache_read": 0.625
     },
     "gemini-2.5-pro": {
       "input": 1.25,
-      "output": 5.0,
-      "thinking": 5.0,
+      "output": 5.00,
+      "thinking": 5.00,
       "cache_read": 0.3125
     },
-    "gemini-3.1-pro": {
-      "input": 2.0,
-      "output": 8.0,
-      "thinking": 8.0,
-      "cache_read": 0.5
+    "gemini-2.5-flash": {
+      "input": 0.10,
+      "output": 0.40,
+      "thinking": 0.40,
+      "cache_read": 0.025
     },
-    "claude-3-7-sonnet": {
-      "input": 3.0,
-      "output": 15.0,
-      "thinking": 15.0,
-      "cache_read": 0.3
+    "gpt-5.6-sol": {
+      "input": 5.00,
+      "output": 30.00,
+      "thinking": 30.00,
+      "cache_read": 0.500
     },
-    "claude-3-5-sonnet": {
-      "input": 3.0,
-      "output": 15.0,
-      "thinking": 15.0,
-      "cache_read": 0.3
+    "gpt-5.6-terra": {
+      "input": 2.00,
+      "output": 12.00,
+      "thinking": 12.00,
+      "cache_read": 0.200
     },
-    "claude-3-5-haiku": {
-      "input": 0.8,
-      "output": 4.0,
-      "thinking": 4.0,
-      "cache_read": 0.08
+    "gpt-5.6-luna": {
+      "input": 0.200,
+      "output": 1.20,
+      "thinking": 1.20,
+      "cache_read": 0.0200
+    },
+    "gpt-5.5": {
+      "input": 5.00,
+      "output": 30.00,
+      "thinking": 30.00,
+      "cache_read": 0.500
     },
     "gpt-4o": {
-      "input": 2.5,
-      "output": 10.0,
-      "thinking": 10.0,
+      "input": 2.50,
+      "output": 10.00,
+      "thinking": 10.00,
       "cache_read": 1.25
     },
     "o3-mini": {
-      "input": 1.1,
-      "output": 4.4,
-      "thinking": 4.4,
+      "input": 1.10,
+      "output": 4.40,
+      "thinking": 4.40,
       "cache_read": 0.55
     },
-    "gpt-5.6-terra": {
-      "input": 2.0,
-      "output": 8.0,
-      "thinking": 8.0,
-      "cache_read": 0.5
+    "claude-3-7-sonnet": {
+      "input": 3.00,
+      "output": 15.00,
+      "thinking": 15.00,
+      "cache_read": 0.30
     },
-    "gpt-5.6-sol": {
-      "input": 2.0,
-      "output": 8.0,
-      "thinking": 8.0,
-      "cache_read": 0.5
+    "claude-3-5-sonnet": {
+      "input": 3.00,
+      "output": 15.00,
+      "thinking": 15.00,
+      "cache_read": 0.30
+    },
+    "claude-3-5-haiku": {
+      "input": 0.80,
+      "output": 4.00,
+      "thinking": 4.00,
+      "cache_read": 0.08
     },
     "default": {
-      "input": 1.0,
-      "output": 3.0,
-      "thinking": 3.0,
+      "input": 1.00,
+      "output": 3.00,
+      "thinking": 3.00,
       "cache_read": 0.25
     }
   },

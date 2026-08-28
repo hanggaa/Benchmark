@@ -57,17 +57,23 @@ class BaseRunner(abc.ABC):
         # Google Gemini Family
         if "gemini" in m:
             if "flash" in m or "lite" in m:
-                # Gemini Flash tier ($0.15 / $0.60 per 1M)
-                return {"input": 0.15, "output": 0.60, "thinking": 0.60, "cache_read": 0.0375}
+                # Gemini Flash tier ($0.75 / $3.75 per 1M)
+                return {"input": 0.75, "output": 3.75, "thinking": 3.75, "cache_read": 0.1875}
             elif "pro" in m or "ultra" in m:
-                # Gemini Pro tier ($1.25 - $2.00 / $5.00 - $8.00 per 1M)
-                return {"input": 1.50, "output": 6.00, "thinking": 6.00, "cache_read": 0.375}
+                # Gemini Pro tier ($2.50 / $15.00 per 1M)
+                return {"input": 2.50, "output": 15.00, "thinking": 15.00, "cache_read": 0.625}
 
         # OpenAI / Codex Family
         if any(prefix in m for prefix in ("gpt-", "o1", "o3", "o4", "chatgpt")):
-            if "mini" in m or "nano" in m:
+            if "sol" in m:
+                return {"input": 5.00, "output": 30.00, "thinking": 30.00, "cache_read": 0.500}
+            elif "terra" in m:
+                return {"input": 2.00, "output": 12.00, "thinking": 12.00, "cache_read": 0.200}
+            elif "luna" in m:
+                return {"input": 0.200, "output": 1.20, "thinking": 1.20, "cache_read": 0.0200}
+            elif "mini" in m or "nano" in m:
                 return {"input": 1.10, "output": 4.40, "thinking": 4.40, "cache_read": 0.55}
-            return {"input": 2.00, "output": 8.00, "thinking": 8.00, "cache_read": 0.50}
+            return {"input": 2.00, "output": 12.00, "thinking": 12.00, "cache_read": 0.20}
 
         # Anthropic Claude Family
         if "claude" in m:
