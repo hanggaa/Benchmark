@@ -153,6 +153,7 @@ def run_benchmark(
     effort: Optional[str] = None,
     categories: Optional[List[str]] = None,
     case_ids: Optional[List[str]] = None,
+    timeout_override: Optional[int] = None,
     output_dir: Optional[str] = None,
     dry_run: bool = False,
 ) -> List[BenchmarkResult]:

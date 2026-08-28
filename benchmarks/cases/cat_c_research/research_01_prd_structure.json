@@ -22,5 +22,6 @@
       "User level: B",
       "Target platform: web"
     ]
-  }
+  },
+  "timeout_seconds": 300
 }

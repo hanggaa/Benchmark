@@ -37,6 +37,8 @@ class MarkdownReporter:
             total_in = sum(x.token_usage.input_tokens for x in items)
             total_out = sum(x.token_usage.output_tokens for x in items)
             total_think = sum(x.token_usage.thinking_tokens for x in items)
+            total_cost = round(sum(x.token_usage.estimated_cost_usd for x in items), 6)
+
             # Timeout penalty to prevent artificial inflation from incomplete runs
             timeout_count = sum(
                 1 for x in items 

@@ -1,0 +1,46 @@
+[
+  {
+    "case_id": "sec_ctf_01_keygen",
+    "case_title": "Cryptographic Inverse: Mathematical Token Invertor & Verification Algorithm",
+    "category": "bugfix",
+    "model": "Gemini 3.7 Flash (High)",
+    "cli": "agy",
+    "passed": true,
+    "duration_seconds": 11.021156,
+    "token_usage": {
+      "input_tokens": 18150,
+      "output_tokens": 2505,
+      "thinking_tokens": 1918,
+      "cache_read_tokens": 0,
+      "total_tokens": 20655,
+      "estimated_cost_usd": 0.030199
+    },
+    "raw_response": "```python\ndef generate_token(username: str) -> str:\n    \"\"\"Generates a valid algebraic token for the given username in XXXX-XXXX-XXXX-XXXX format.\"\"\"\n    # Compute seed from username\n    seed = 0x5A5A\n    for ch in username:\n        seed = ((seed << 5) - seed + ord(ch)) & 0xFFFF\n\n    # Derive token components using inverse mathematical invariants\n    b1 = seed ^ 0xBEEF\n    b2 = 0xCAFE ^ ((b1 * 31 + 0x1337) & 0xFFFF)\n    b3 = 0xFEED ^ ((b2 * 17 + 0x7331) & 0xFFFF)\n    b4 = (0x1337 - (b1 + b2 + b3)) & 0xFFFF\n\n    return f\"{b1:04X}-{b2:04X}-{b3:04X}-{b4:04X}\"\n\n\ndef verify_token(username: str, token: str) -> bool:\n    \"\"\"Validates algebraic token format: XXXX-XXXX-XXXX-XXXX\"\"\"\n    parts = token.strip().split(\"-\")\n    if len(parts) != 4 or any(len(p) != 4 for p in parts):\n        return False\n    try:\n        b1 = int(parts[0], 16)\n        b2 = int(parts[1], 16)\n        b3 = int(parts[2], 16)\n        b4 = int(parts[3], 16)\n    except ValueError:\n        return False\n\n    # Seed calculated from username\n    seed = 0x5A5A\n    for ch in username:\n        seed = ((seed << 5) - seed + ord(ch)) & 0xFFFF\n\n    # Check mathematical invariants\n    if (b1 ^ seed) != 0xBEEF:\n        return False\n    if (b2 ^ ((b1 * 31 + 0x1337) & 0xFFFF)) != 0xCAFE:\n        return False\n    if (b3 ^ ((b2 * 17 + 0x7331) & 0xFFFF)) != 0xFEED:\n        return False\n    if ((b1 + b2 + b3 + b4) & 0xFFFF) != 0x1337:\n        return False\n    return True\n\n\n# Aliases\ngenerate_license = generate_token\nverify_license = verify_token\n```\n",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787899601.541209
+  },
+  {
+    "case_id": "sec_ctf_01_keygen",
+    "case_title": "Cryptographic Inverse: Mathematical Token Invertor & Verification Algorithm",
+    "category": "bugfix",
+    "model": "gpt-5.6-terra",
+    "cli": "codex",
+    "passed": true,
+    "duration_seconds": 12.960247540999262,
+    "token_usage": {
+      "input_tokens": 21270,
+      "output_tokens": 476,
+      "thinking_tokens": 46,
+      "cache_read_tokens": 9984,
+      "total_tokens": 21746,
+      "estimated_cost_usd": 0.050801
+    },
+    "raw_response": "```python\ndef verify_token(username: str, token: str) -> bool:\n    parts = token.strip().split(\"-\")\n    if len(parts) != 4 or any(len(p) != 4 for p in parts):\n        return False\n    try:\n        b1, b2, b3, b4 = (int(part, 16) for part in parts)\n    except ValueError:\n        return False\n\n    seed = 0x5A5A\n    for ch in username:\n        seed = ((seed << 5) - seed + ord(ch)) & 0xFFFF\n\n    return (\n        (b1 ^ seed) == 0xBEEF\n        and (b2 ^ ((b1 * 31 + 0x1337) & 0xFFFF)) == 0xCAFE\n        and (b3 ^ ((b2 * 17 + 0x7331) & 0xFFFF)) == 0xFEED\n        and ((b1 + b2 + b3 + b4) & 0xFFFF) == 0x1337\n    )\n\n\ndef generate_token(username: str) -> str:\n    seed = 0x5A5A\n    for ch in username:\n        seed = ((seed << 5) - seed + ord(ch)) & 0xFFFF\n\n    b1 = seed ^ 0xBEEF\n    b2 = ((b1 * 31 + 0x1337) & 0xFFFF) ^ 0xCAFE\n    b3 = ((b2 * 17 + 0x7331) & 0xFFFF) ^ 0xFEED\n    b4 = (0x1337 - b1 - b2 - b3) & 0xFFFF\n\n    return f\"{b1:04X}-{b2:04X}-{b3:04X}-{b4:04X}\"\n\n\ngenerate_license = generate_token\nverify_license = verify_token\n```",
+    "error_message": null,
+    "evaluator_logs": "All test assertions passed successfully.",
+    "effort": "high",
+    "timestamp": 1787899614.535917
+  }
+]

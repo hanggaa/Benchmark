@@ -15,7 +15,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
   onOpenCase,
 }) => {
   const [selectedCli, setSelectedCli] = useState<string>('all');
-  const [sortField, setSortField] = useState<SortField>('efficiency_score');
+  const [sortField, setSortField] = useState<SortField>('pass_rate');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [expandedModel, setExpandedModel] = useState<string | null>(null);
 
@@ -24,6 +24,11 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
   const filteredSummaries = summaries
     .filter((s) => selectedCli === 'all' || s.cli.toLowerCase() === selectedCli.toLowerCase())
     .sort((a, b) => {
+      if (sortField === 'pass_rate') {
+        const diff = sortAsc ? a.pass_rate - b.pass_rate : b.pass_rate - a.pass_rate;
+        if (diff !== 0) return diff;
+        return b.efficiency_score - a.efficiency_score;
+      }
       const valA = a[sortField] ?? 0;
       const valB = b[sortField] ?? 0;
       return sortAsc ? (valA > valB ? 1 : -1) : valA < valB ? 1 : -1;

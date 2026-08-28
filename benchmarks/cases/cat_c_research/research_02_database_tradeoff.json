@@ -17,5 +17,6 @@
       "Pinecone",
       "$"
     ]
-  }
+  },
+  "timeout_seconds": 300
 }
