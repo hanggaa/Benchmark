@@ -30,8 +30,12 @@ class AntigravityRunner(BaseRunner):
             prompt,
             "--output-format",
             "json",
-            "--dangerously-skip-permissions",
         ]
+
+        if cwd:
+            cmd.extend(["--sandbox", "--mode", "accept-edits", "--disable-slash-commands"])
+        else:
+            cmd.append("--dangerously-skip-permissions")
 
         if model:
             cmd.extend(["--model", model])

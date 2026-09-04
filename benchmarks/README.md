@@ -14,14 +14,19 @@ Mengukur performa secara empiris berdasarkan **4 Pilar Utama**:
 
 ```text
 benchmarks/
-├── cases/                     # Kumpulan 14 skenario pengujian & hidden tests
+├── cases/                     # Kumpulan 20 skenario pengujian & hidden tests
 │   ├── cat_a_logic/           # Algoritma, LRU Cache TTL, Topo DAG, Async Worker Pool
 │   ├── cat_b_bugfix/          # Perbaikan bug keamanan JWT & ReDoS Linearization
 │   ├── cat_c_research/        # Validasi struktur PRD & Matrix DB Tradeoffs
-│   └── cat_d_tool_use/        # Refactoring Surgical Connection Pool
+│   ├── cat_d_tool_use/        # Refactoring Surgical Connection Pool
+│   ├── cat_e_security/        # Archive extraction & multi-tenant authorization
+│   ├── cat_f_stateful_systems/# Payment ledger & crash-recoverable saga
+│   └── cat_g_agentic_repo/    # Multi-file repair & indirect prompt injection
+├── fixtures/                  # Workspace awal untuk pengujian agentic repository
 ├── evaluators/
 │   ├── __init__.py
-│   └── evaluators.py          # UnitTestEvaluator (isolated sandbox) & SchemaEvaluator
+│   └── evaluators.py          # Unit, schema, dan workspace-patch evaluators
+├── tests/                     # Unit tests untuk benchmark harness
 ├── runners/
 │   ├── base_runner.py         # Abstract base runner & pricing engine
 │   ├── antigravity_runner.py  # Driver untuk Antigravity CLI (agy)
@@ -141,13 +146,13 @@ Secara default batas waktu pengujian adalah **300 detik (5 menit)** per soal aga
 ```bash
 # Menyetel toleransi timeout ke 480 detik (8 menit) untuk soal sangat berat
 python3 -m benchmarks.runner \
-  --models "Gemini 3.7 Flash (High), gpt-5.6-terra --effort high" \
-  --timeout 480
+  --models "Gemini 3.8 Flash (High), Gemini 3.7 Flash (High), Gemini 3.6 Flash (High), Gemini 3.1 Pro (High), gpt-5.6-terra --effort high, gpt-5.6-luna --effort high" \
+  --timeout 600
 ```
 
 ---
 
-## 📋 Daftar 14 Skenario Kasus Uji Bawaan
+## 📋 Daftar 20 Skenario Kasus Uji Bawaan
 
 | ID Kasus | Kategori | Tingkat Kesulitan | Aspek Kritis yang Diuji |
 | :--- | :--- | :---: | :--- |
@@ -165,6 +170,12 @@ python3 -m benchmarks.runner \
 | `research_02_database_tradeoff` | Research / Doc | Medium | Vector DB 10M Matrix (pgvector vs Qdrant vs Pinecone) |
 | `tool_01_surgical_refactor` | Tool Use | Medium | Surgical Connection Pool Healthcheck & Signature Parity |
 | `tool_02_ast_pruner` | Tool Use | Hard | AST Dead Import Pruning, Private Function Stripping & Docstring Preservation |
+| `security_01_secure_archive` | Security | Hard | Zip Slip, symlink escape, Unicode collision & decompression bomb defense |
+| `security_02_tenant_authz` | Security | Hard | Fail-closed policy evaluation, deny precedence & tenant isolation |
+| `stateful_01_payment_ledger` | Stateful Systems | Hard | Idempotent out-of-order payment events with exact decimal invariants |
+| `stateful_02_saga_recovery` | Stateful Systems | Hard | Durable retry, crash recovery & exactly-once reverse compensation |
+| `agentic_01_multifile_regression` | Agentic Repo | Hard | Multi-file cache repair with hidden regression tests and diff allowlist |
+| `agentic_02_indirect_injection` | Agentic Repo | Hard | Untrusted-document injection resistance, canary protection & scoped edit |
 
 ---
 
@@ -202,3 +213,23 @@ Buat file JSON baru di dalam folder `benchmarks/cases/cat_<kategori>/`:
   "test_code": "assert my_function(10) == 20\nprint('All tests passed!')"
 }
 ```
+
+`workspace_patch_test` menyalin fixture ke direktori sementara, menjalankan agent
+di sana, lalu memeriksa allowlist perubahan, required files, canary, dan hidden
+regression tests. Evaluator yang tidak dikenal selalu menghasilkan FAIL.
+
+### Validasi Harness
+
+```bash
+python3 -m unittest discover -s benchmarks/tests -v
+python3 -m benchmarks.runner --models "codex:gpt-5.6-sol:high" \
+  --category security,stateful_systems,agentic_repo --dry-run
+```
+
+### Keamanan Eksekusi Kode
+
+Di macOS, jawaban Python dijalankan melalui `sandbox-exec` tanpa network dan
+dengan akses tulis terbatas pada direktori sementara. Pada platform tanpa
+sandbox lokal, evaluator menolak mengeksekusi kode. Variabel
+`BENCHMARK_ALLOW_UNSANDBOXED_CODE=1` hanya boleh digunakan jika keseluruhan
+runner sudah berada di container/VM sekali pakai yang terisolasi.

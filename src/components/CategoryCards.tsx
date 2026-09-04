@@ -5,15 +5,15 @@ export const CategoryCards: React.FC = () => {
     {
       code: 'MOD-01',
       title: 'LOGIC & CONCURRENCY ENGINE',
-      cases: '04 SCENARIOS',
-      desc: 'Thread-safe LRU Cache with TTL eviction, Topological DAG Cycle Detection, Sliding Window Rate Limiter, and Async Priority Worker Pool with graceful drain.',
+      cases: '06 SCENARIOS',
+      desc: 'Caches, dependency graphs, rate limiting, async workers, quorum state machines, and zero-copy binary parsing.',
       standard: 'ZERO RACE CONDITIONS'
     },
     {
       code: 'MOD-02',
       title: 'SECURITY & VULNERABILITY INTERCEPT',
-      cases: '02 SCENARIOS',
-      desc: 'Eliminating JWT none-algorithm exploits and boundary expiration flaws, plus linearizing Catastrophic ReDoS Backtracking under 50,000-character evil payloads.',
+      cases: '04 SCENARIOS',
+      desc: 'JWT and ReDoS repairs plus adversarial token inversion and SQL injection interception.',
       standard: 'O(N) LINEAR GUARANTEE'
     },
     {
@@ -26,9 +26,30 @@ export const CategoryCards: React.FC = () => {
     {
       code: 'MOD-04',
       title: 'SURGICAL CODE DIFF REFACTOR',
-      cases: '01 SCENARIO',
-      desc: 'Refactoring connection pools with self-healing auto-recovery while guaranteeing 100% method signature parity and zero docstring corruption.',
+      cases: '02 SCENARIOS',
+      desc: 'Self-healing connection pools and AST-based dead-code pruning with public API preservation.',
       standard: 'MINIMAL CODE CHURN'
+    },
+    {
+      code: 'MOD-05',
+      title: 'DEFENSIVE SECURITY CONTROLS',
+      cases: '02 SCENARIOS',
+      desc: 'Secure archive extraction and fail-closed multi-tenant authorization under adversarial inputs.',
+      standard: 'DENY BY DEFAULT'
+    },
+    {
+      code: 'MOD-06',
+      title: 'STATEFUL SYSTEM RECOVERY',
+      cases: '02 SCENARIOS',
+      desc: 'Out-of-order payment ledger reconciliation and crash-recoverable saga compensation.',
+      standard: 'EXACTLY-ONCE EFFECTS'
+    },
+    {
+      code: 'MOD-07',
+      title: 'AGENTIC REPOSITORY OPERATIONS',
+      cases: '02 SCENARIOS',
+      desc: 'Multi-file regression repair and indirect prompt-injection resistance in isolated fixtures.',
+      standard: 'SCOPED VERIFIED DIFF'
     },
   ];
 

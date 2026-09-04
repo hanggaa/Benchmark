@@ -5,18 +5,27 @@ import glob
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from benchmarks.evaluators.evaluators import SchemaEvaluator, UnitTestEvaluator
+from benchmarks.evaluators.evaluators import (
+    SchemaEvaluator,
+    UnitTestEvaluator,
+    WorkspacePatchEvaluator,
+)
 from benchmarks.models import BenchmarkResult, TestCase, TokenUsage
 from benchmarks.reporters.reporters import JSONReporter, MarkdownReporter
 from benchmarks.runners.antigravity_runner import AntigravityRunner
 from benchmarks.runners.claude_runner import ClaudeRunner
 from benchmarks.runners.codex_runner import CodexRunner
 from benchmarks.runners.opencode_runner import OpenCodeRunner
+
+
+SUPPORTED_EVALUATORS = {"python_unit_test", "schema_check", "workspace_patch_test"}
 
 
 def load_config() -> Dict[str, Any]:
@@ -48,6 +57,10 @@ def load_test_cases(
                 expected_structure=data.get("expected_structure", {}),
                 timeout_seconds=data.get("timeout_seconds", 120),
                 difficulty=data.get("difficulty", "medium"),
+                workspace_fixture=data.get("workspace_fixture", ""),
+                allowed_changed_files=data.get("allowed_changed_files", []),
+                required_changed_files=data.get("required_changed_files", []),
+                forbidden_substrings=data.get("forbidden_substrings", []),
             )
 
             if categories and tc.category not in categories:
@@ -218,14 +231,60 @@ def run_benchmark(
                 print("⏩ SKIPPED (Dry Run)")
                 continue
 
+            if tc.evaluator_type not in SUPPORTED_EVALUATORS:
+                eval_logs = f"Unknown evaluator type: {tc.evaluator_type}"
+                print("❌ FAIL (invalid benchmark configuration)")
+                results.append(
+                    BenchmarkResult(
+                        case_id=tc.id,
+                        case_title=tc.title,
+                        category=tc.category,
+                        model=model,
+                        cli=cli_name,
+                        passed=False,
+                        duration_seconds=0.0,
+                        token_usage=TokenUsage(),
+                        evaluator_logs=eval_logs,
+                        effort=model_effort,
+                    )
+                )
+                continue
+
             current_timeout = timeout_override or tc.timeout_seconds
 
-            resp, tokens, duration, err = runner.run_prompt(
-                prompt=tc.prompt,
-                model=model,
-                effort=model_effort,
-                timeout_seconds=current_timeout,
-            )
+            temp_workspace = None
+            workspace = None
+            baseline = None
+            if tc.evaluator_type == "workspace_patch_test":
+                fixtures_root = (Path(__file__).parent / "fixtures").resolve()
+                fixture = (Path(__file__).parent / tc.workspace_fixture).resolve()
+                fixture_is_safe = (
+                    fixture != fixtures_root and fixtures_root in fixture.parents
+                )
+                if not fixture_is_safe or not fixture.is_dir():
+                    err = f"Workspace fixture is invalid or not found: {fixture}"
+                    resp, tokens, duration = "", TokenUsage(), 0.0
+                else:
+                    temp_workspace = tempfile.TemporaryDirectory(
+                        prefix=f"benchmark_{tc.id}_"
+                    )
+                    workspace = Path(temp_workspace.name) / "workspace"
+                    shutil.copytree(fixture, workspace)
+                    baseline = WorkspacePatchEvaluator.snapshot(workspace)
+                    resp, tokens, duration, err = runner.run_prompt(
+                        prompt=tc.prompt,
+                        model=model,
+                        effort=model_effort,
+                        timeout_seconds=current_timeout,
+                        cwd=str(workspace),
+                    )
+            else:
+                resp, tokens, duration, err = runner.run_prompt(
+                    prompt=tc.prompt,
+                    model=model,
+                    effort=model_effort,
+                    timeout_seconds=current_timeout,
+                )
 
             if err:
                 print(f"❌ CLI ERROR ({duration:.1f}s)")
@@ -245,6 +304,8 @@ def run_benchmark(
                         effort=model_effort,
                     )
                 )
+                if temp_workspace is not None:
+                    temp_workspace.cleanup()
                 continue
 
             # Run evaluator
@@ -259,9 +320,26 @@ def run_benchmark(
                 eval_passed, eval_logs = SchemaEvaluator.evaluate(
                     resp, tc.expected_structure
                 )
+            elif tc.evaluator_type == "workspace_patch_test":
+                if workspace is None or baseline is None:
+                    eval_passed = False
+                    eval_logs = "Workspace fixture was not prepared."
+                else:
+                    eval_passed, eval_logs = WorkspacePatchEvaluator.evaluate(
+                        resp,
+                        workspace,
+                        baseline,
+                        tc.test_code,
+                        tc.allowed_changed_files,
+                        tc.required_changed_files,
+                        tc.forbidden_substrings,
+                    )
             else:
-                eval_passed = True
-                eval_logs = "No specific evaluator defined."
+                eval_passed = False
+                eval_logs = f"Unknown evaluator type: {tc.evaluator_type}"
+
+            if temp_workspace is not None:
+                temp_workspace.cleanup()
 
             status_icon = "✅ PASS" if eval_passed else "❌ FAIL"
             print(
@@ -303,10 +381,11 @@ def run_benchmark(
     latest_md = out_path / "latest_report.md"
     latest_md.write_text(md_report, encoding="utf-8")
 
-    # Also save to frontend web data folder
-    web_data_file = Path(__file__).parent.parent / "src" / "data" / "benchmark-data.json"
-    web_data_file.parent.mkdir(parents=True, exist_ok=True)
-    JSONReporter.save_report(results, web_data_file)
+    if results:
+        # Also save to frontend web data folder
+        web_data_file = Path(__file__).parent.parent / "src" / "data" / "benchmark-data.json"
+        web_data_file.parent.mkdir(parents=True, exist_ok=True)
+        JSONReporter.save_report(results, web_data_file)
 
     print("\n" + "=" * 70)
     print("🎉 BENCHMARK RUN COMPLETE!")
@@ -323,7 +402,7 @@ def main():
     parser.add_argument("--cli", default="auto", help="Target CLI (agy, claude, codex, opencode, auto) or comma-separated list")
     parser.add_argument("--models", required=True, help="Comma-separated model names (e.g. 'Gemini 3.7 Flash (High), gpt-5.6-sol --effort high')")
     parser.add_argument("--effort", default=None, help="Reasoning effort (low, medium, high)")
-    parser.add_argument("--category", default=None, help="Filter by category (logic, bugfix, research, tool_use)")
+    parser.add_argument("--category", default=None, help="Filter by category (for example: logic, security, stateful_systems, agentic_repo)")
     parser.add_argument("--case", default=None, help="Filter by specific case ID")
     parser.add_argument("--timeout", type=int, default=None, help="Global timeout limit in seconds (e.g. 300, 360, 480)")
     parser.add_argument("--output-dir", default=None, help="Output directory for reports")

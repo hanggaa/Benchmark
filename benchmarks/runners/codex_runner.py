@@ -42,8 +42,20 @@ class CodexRunner(BaseRunner):
             "exec",
             "--ephemeral",
             "--json",
-            "--dangerously-bypass-approvals-and-sandbox",
         ]
+
+        if cwd:
+            cmd.extend([
+                "--sandbox",
+                "workspace-write",
+                "--ignore-user-config",
+                "--ignore-rules",
+                "--skip-git-repo-check",
+                "--cd",
+                cwd,
+            ])
+        else:
+            cmd.append("--dangerously-bypass-approvals-and-sandbox")
 
         if clean_model:
             cmd.extend(["-m", clean_model])

@@ -36,6 +36,10 @@ class TestCase:
     expected_structure: Dict[str, Any] = field(default_factory=dict)
     timeout_seconds: int = 300
     difficulty: str = 'medium'  # 'easy', 'medium', 'hard'
+    workspace_fixture: str = ''
+    allowed_changed_files: List[str] = field(default_factory=list)
+    required_changed_files: List[str] = field(default_factory=list)
+    forbidden_substrings: List[str] = field(default_factory=list)
 
 
 @dataclass

@@ -32,6 +32,9 @@ class OpenCodeRunner(BaseRunner):
             "json",
         ]
 
+        if cwd:
+            cmd.append("--pure")
+
         if model:
             cmd.extend(["-m", model])
 

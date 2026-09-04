@@ -30,8 +30,19 @@ class ClaudeRunner(BaseRunner):
             prompt,
             "--output-format",
             "json",
-            "--dangerously-skip-permissions",
         ]
+
+        if cwd:
+            cmd.extend([
+                "--safe-mode",
+                "--permission-mode",
+                "dontAsk",
+                "--allowedTools",
+                "Read,Edit,Write,Bash(python3 -m unittest *)",
+                "--no-session-persistence",
+            ])
+        else:
+            cmd.append("--dangerously-skip-permissions")
 
         if model:
             cmd.extend(["--model", model])

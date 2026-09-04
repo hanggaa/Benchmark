@@ -1,0 +1,21 @@
+{
+  "id": "agentic_01_multifile_regression",
+  "title": "Repository-Level HTTP Cache Regression Repair",
+  "category": "agentic_repo",
+  "difficulty": "hard",
+  "description": "Inspect and repair interacting parser and cache bugs across multiple files without changing tests or public APIs.",
+  "prompt": "Work directly in this repository fixture. Repair the Cache-Control regression in `cachelib/cache_control.py` and `cachelib/http_cache.py` without changing public method signatures. Requirements: directive names are case-insensitive; commas inside quoted extension values are not directive separators; malformed or negative numeric directives must not crash and make the response non-cacheable; `no-store`, omitted `max-age`, and `max-age <= 0` must remove any existing entry for that key and make `put` return false. An entry is fresh only while `now < expires_at`. It may be served with `on_error=True` only while `expires_at <= now < stale_until`; after that it must be removed. `stale-if-error` defaults to zero and negative or malformed values behave as zero. Preserve the existing API and do not modify tests, README, or files outside `cachelib/cache_control.py` and `cachelib/http_cache.py`. Run the visible tests, then briefly report the files changed.",
+  "evaluator_type": "workspace_patch_test",
+  "workspace_fixture": "fixtures/agentic_01_multifile_regression",
+  "allowed_changed_files": [
+    "cachelib/cache_control.py",
+    "cachelib/http_cache.py"
+  ],
+  "required_changed_files": [
+    "cachelib/cache_control.py",
+    "cachelib/http_cache.py"
+  ],
+  "forbidden_substrings": [],
+  "timeout_seconds": 600,
+  "test_code": "\nimport sys\nfrom pathlib import Path\nsys.path.insert(0, str(Path(__file__).parent))\nfrom cachelib import HTTPCache\nfrom cachelib.cache_control import parse_cache_control\n\npolicy = parse_cache_control('MAX-AGE=10, extension=\\\"no-store, max-age=999\\\", STALE-IF-ERROR=5')\nassert policy.max_age == 10, policy\nassert policy.stale_if_error == 5\nassert policy.no_store is False\n\nfor header in ['max-age=bad', 'max-age=-1', 'stale-if-error=bad, max-age=10']:\n    cache = HTTPCache()\n    if header.startswith('stale'):\n        assert cache.put('k', 'v', header, 0.0) is True\n        assert cache.get('k', 10.0, on_error=True) is None\n    else:\n        assert cache.put('k', 'v', header, 0.0) is False\n\ncache = HTTPCache()\nassert cache.put('k', 'old', 'max-age=100', 0.0) is True\nassert cache.put('k', 'new', 'No-Store, max-age=100', 1.0) is False\nassert cache.get('k', 2.0) is None\nassert cache.put('k', 'v', '', 2.0) is False\nassert cache.put('k', 'v', 'max-age=0', 2.0) is False\n\ncache = HTTPCache()\nassert cache.put('edge', 'value', 'max-age=10, stale-if-error=5', 100.0) is True\nassert cache.get('edge', 109.999) == 'value'\nassert cache.get('edge', 110.0) is None\ncache.put('stale', 'value', 'max-age=10, stale-if-error=5', 100.0)\nassert cache.get('stale', 110.0, on_error=True) == 'value'\nassert cache.get('stale', 114.999, on_error=True) == 'value'\nassert cache.get('stale', 115.0, on_error=True) is None\nassert cache.get('stale', 111.0, on_error=True) is None\n\nprint('Repository-level HTTP cache regression tests passed.')\n"
+}

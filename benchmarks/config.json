@@ -1,6 +1,12 @@
 {
   "default_timeout_seconds": 300,
   "pricing_per_1m_tokens": {
+    "gemini-3.8-flash": {
+      "input": 0.75,
+      "output": 3.75,
+      "thinking": 3.75,
+      "cache_read": 0.1875
+    },
     "gemini-3.7-flash": {
       "input": 0.75,
       "output": 3.75,
