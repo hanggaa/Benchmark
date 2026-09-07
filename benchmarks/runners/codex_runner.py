@@ -23,6 +23,7 @@ class CodexRunner(BaseRunner):
         effort: Optional[str] = None,
         timeout_seconds: int = 300,
         cwd: Optional[str] = None,
+        workspace_mode: bool = False,
     ) -> Tuple[str, TokenUsage, float, Optional[str]]:
         clean_model = model
         model_effort = effort
@@ -44,18 +45,15 @@ class CodexRunner(BaseRunner):
             "--json",
         ]
 
+        cmd.extend([
+            "--sandbox",
+            "workspace-write" if workspace_mode else "read-only",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--skip-git-repo-check",
+        ])
         if cwd:
-            cmd.extend([
-                "--sandbox",
-                "workspace-write",
-                "--ignore-user-config",
-                "--ignore-rules",
-                "--skip-git-repo-check",
-                "--cd",
-                cwd,
-            ])
-        else:
-            cmd.append("--dangerously-bypass-approvals-and-sandbox")
+            cmd.extend(["--cd", cwd])
 
         if clean_model:
             cmd.extend(["-m", clean_model])
@@ -103,19 +101,29 @@ class CodexRunner(BaseRunner):
                     # Collect usage tokens
                     elif event_type == "turn.completed":
                         usage = event.get("usage", {})
-                        token_usage.input_tokens = usage.get("input_tokens", 0)
                         token_usage.cache_read_tokens = usage.get("cached_input_tokens", 0)
-                        token_usage.output_tokens = usage.get("output_tokens", 0)
+                        raw_input = usage.get("input_tokens", 0)
+                        token_usage.input_tokens = max(
+                            raw_input - token_usage.cache_read_tokens, 0
+                        )
                         token_usage.thinking_tokens = usage.get("reasoning_output_tokens", 0)
+                        raw_output = usage.get("output_tokens", 0)
+                        token_usage.output_tokens = max(
+                            raw_output - token_usage.thinking_tokens, 0
+                        )
                         token_usage.total_tokens = (
-                            token_usage.input_tokens + token_usage.output_tokens
+                            raw_input + raw_output
+                        )
+                        token_usage.telemetry_source = "codex-jsonl"
+                        token_usage.telemetry_complete = all(
+                            key in usage for key in ("input_tokens", "output_tokens")
                         )
                 except json.JSONDecodeError:
                     continue
 
             response_text = "\n\n".join(collected_responses).strip() if collected_responses else stdout
 
-            if process.returncode != 0 and not response_text:
+            if process.returncode != 0:
                 err_msg = stderr or stdout or f"Process exited with code {process.returncode}"
                 return "", token_usage, duration, err_msg
 
@@ -126,6 +134,7 @@ class CodexRunner(BaseRunner):
             duration = time.perf_counter() - start_time
             token_usage.input_tokens = self.estimate_prompt_tokens(prompt)
             token_usage.total_tokens = token_usage.input_tokens
+            token_usage.telemetry_source = "prompt-estimate"
             token_usage.calculate_cost(pricing)
             return "", token_usage, duration, f"TIMEOUT: Process exceeded {timeout_seconds}s limit"
         except Exception as e:

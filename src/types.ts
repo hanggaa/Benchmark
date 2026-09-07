@@ -5,6 +5,8 @@ export interface TokenUsage {
   cache_read_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  telemetry_source?: string;
+  telemetry_complete?: boolean;
 }
 
 export interface BenchmarkItem {
@@ -20,6 +22,8 @@ export interface BenchmarkItem {
   error_message?: string | null;
   evaluator_logs?: string;
   effort?: string | null;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  metadata?: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -30,11 +34,13 @@ export interface AggregatedModelSummary {
   total_cases: number;
   passed_cases: number;
   pass_rate: number;
+  weighted_pass_rate: number;
   avg_duration_seconds: number;
   total_input_tokens: number;
   total_output_tokens: number;
   total_thinking_tokens: number;
   total_cost_usd: number;
-  efficiency_score: number;
+  efficiency_score: number | null;
+  telemetry_complete: boolean;
   category_pass_rates: Record<string, { passed: number; total: number; rate: number }>;
 }

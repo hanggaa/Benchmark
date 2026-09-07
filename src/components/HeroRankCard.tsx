@@ -57,10 +57,10 @@ export const HeroRankCard: React.FC<HeroRankCardProps> = ({ topModel, onSelectMo
           
           <div className="bg-substrate-dark p-4">
             <dt className="text-[10px] text-phosphor-subtle uppercase mb-1">
-              PASS@1 ACCURACY
+              WEIGHTED ACCURACY
             </dt>
             <dd className="text-2xl sm:text-3xl font-extrabold text-telemetry-green">
-              {topModel.pass_rate}%
+              {topModel.weighted_pass_rate}%
             </dd>
             <div className="text-[10px] text-phosphor-dim uppercase mt-1">
               {topModel.passed_cases}/{topModel.total_cases} CASES VERIFIED
@@ -72,7 +72,7 @@ export const HeroRankCard: React.FC<HeroRankCardProps> = ({ topModel, onSelectMo
               EFFICIENCY INDEX
             </dt>
             <dd className="text-2xl sm:text-3xl font-extrabold text-phosphor-white">
-              {topModel.efficiency_score.toLocaleString()}
+              {topModel.efficiency_score?.toLocaleString() ?? 'N/A'}
             </dd>
             <div className="text-[10px] text-phosphor-dim uppercase mt-1">
               VALUE-TO-COST SCORE

@@ -21,7 +21,23 @@
       "App name: QueryLens",
       "User level: B",
       "Target platform: web"
-    ]
+    ],
+    "required_exact_lines": [
+      "- Stage: prd",
+      "- App name: QueryLens",
+      "- User level: B",
+      "- Target platform: web",
+      "- Budget: under $100/month",
+      "- Timeline: 4 weeks"
+    ],
+    "min_words": 250,
+    "min_section_words": {
+      "Project Overview & Core Concept": 20,
+      "Target Persona & Key Pain Points": 20,
+      "Core Functional Requirements (MVP)": 35,
+      "Out of Scope (Not in MVP)": 15,
+      "Tech Stack & Architecture Decisions": 25
+    }
   },
   "timeout_seconds": 300
 }

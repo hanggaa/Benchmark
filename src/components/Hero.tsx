@@ -1,12 +1,10 @@
 import React from 'react';
 
 interface HeroProps {
-  topModelName: string;
-  topModelScore: number;
   totalCases: number;
 }
 
-export const Hero: React.FC<HeroProps> = () => {
+export const Hero: React.FC<HeroProps> = ({ totalCases }) => {
   return (
     <section className="relative pt-28 pb-16 px-6 max-w-7xl mx-auto font-mono">
       
@@ -70,10 +68,10 @@ export const Hero: React.FC<HeroProps> = () => {
             // METRIC 01: SUITE SIZE
           </div>
           <div className="text-xl sm:text-2xl font-bold uppercase text-phosphor-white tracking-wide">
-            14 SCENARIOS
+            {totalCases} SCENARIOS
           </div>
           <div className="text-[10px] text-phosphor-dim mt-1 uppercase">
-            HIDDEN UNIT ASSERTIONS
+            HELD-OUT ASSERTIONS
           </div>
         </div>
 
@@ -94,10 +92,10 @@ export const Hero: React.FC<HeroProps> = () => {
             // METRIC 03: PASS@1 PROTOCOL
           </div>
           <div className="text-xl sm:text-2xl font-bold uppercase text-phosphor-white tracking-wide">
-            100% DETERMINISTIC
+            VERSIONED CASE HASHES
           </div>
           <div className="text-[10px] text-phosphor-dim mt-1 uppercase">
-            ZERO PUBLIC CONTAMINATION
+            HELD-OUT EXECUTION WORKSPACES
           </div>
         </div>
 

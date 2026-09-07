@@ -26,6 +26,7 @@ class BaseRunner(abc.ABC):
         effort: Optional[str] = None,
         timeout_seconds: int = 300,
         cwd: Optional[str] = None,
+        workspace_mode: bool = False,
     ) -> Tuple[str, TokenUsage, float, Optional[str]]:
         """
         Runs a prompt through the target CLI tool.

@@ -23,6 +23,7 @@ class ClaudeRunner(BaseRunner):
         effort: Optional[str] = None,
         timeout_seconds: int = 300,
         cwd: Optional[str] = None,
+        workspace_mode: bool = False,
     ) -> Tuple[str, TokenUsage, float, Optional[str]]:
         cmd = [
             "claude",
@@ -32,20 +33,24 @@ class ClaudeRunner(BaseRunner):
             "json",
         ]
 
-        if cwd:
-            cmd.extend([
-                "--safe-mode",
-                "--permission-mode",
-                "dontAsk",
-                "--allowedTools",
-                "Read,Edit,Write,Bash(python3 -m unittest *)",
-                "--no-session-persistence",
-            ])
-        else:
-            cmd.append("--dangerously-skip-permissions")
+        allowed_tools = (
+            "Read,Edit,Write,Bash(python3 -m unittest *)"
+            if workspace_mode
+            else "Read"
+        )
+        cmd.extend([
+            "--safe-mode",
+            "--permission-mode",
+            "dontAsk",
+            "--allowedTools",
+            allowed_tools,
+            "--no-session-persistence",
+        ])
 
         if model:
             cmd.extend(["--model", model])
+        if effort:
+            cmd.extend(["--effort", effort])
 
         start_time = time.perf_counter()
         token_usage = TokenUsage()
@@ -73,10 +78,20 @@ class ClaudeRunner(BaseRunner):
                 usage_data = data.get("usage", {})
 
                 token_usage.input_tokens = usage_data.get("input_tokens", 0)
-                token_usage.output_tokens = usage_data.get("output_tokens", 0)
                 token_usage.thinking_tokens = usage_data.get("thinking_tokens", 0)
+                raw_output = usage_data.get("output_tokens", 0)
+                token_usage.output_tokens = raw_output
                 token_usage.cache_read_tokens = usage_data.get("cache_read_input_tokens", 0)
-                token_usage.total_tokens = token_usage.input_tokens + token_usage.output_tokens + token_usage.thinking_tokens
+                token_usage.total_tokens = (
+                    token_usage.input_tokens
+                    + token_usage.cache_read_tokens
+                    + token_usage.output_tokens
+                    + token_usage.thinking_tokens
+                )
+                token_usage.telemetry_source = "claude-json"
+                token_usage.telemetry_complete = all(
+                    key in usage_data for key in ("input_tokens", "output_tokens")
+                )
                 token_usage.calculate_cost(pricing)
 
                 return response_text, token_usage, duration, None
@@ -88,6 +103,7 @@ class ClaudeRunner(BaseRunner):
             duration = time.perf_counter() - start_time
             token_usage.input_tokens = self.estimate_prompt_tokens(prompt)
             token_usage.total_tokens = token_usage.input_tokens
+            token_usage.telemetry_source = "prompt-estimate"
             token_usage.calculate_cost(pricing)
             return "", token_usage, duration, f"TIMEOUT: Process exceeded {timeout_seconds}s limit"
         except Exception as e:

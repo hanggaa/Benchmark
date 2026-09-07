@@ -1,7 +1,7 @@
 {
   "id": "sec_ctf_01_keygen",
   "title": "Cryptographic Inverse: Mathematical Token Invertor & Verification Algorithm",
-  "category": "bugfix",
+  "category": "ctf",
   "difficulty": "hard",
   "timeout_seconds": 300,
   "description": "Calculate the mathematical inverse of a non-linear bitwise token verification algorithm and implement the paired token generator.",

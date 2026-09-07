@@ -32,7 +32,7 @@ export const ScatterChart: React.FC<ScatterChartProps> = ({ summaries }) => {
         {/* Tactical Telemetry Gauges Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {summaries.map((s, idx) => {
-            const passPct = s.pass_rate;
+            const passPct = s.weighted_pass_rate;
             const costRatio = Math.min((s.total_cost_usd / maxCost) * 100, 100);
 
             return (
@@ -50,15 +50,15 @@ export const ScatterChart: React.FC<ScatterChartProps> = ({ summaries }) => {
                     </span>
                   </div>
                   <span className="text-xs font-bold text-hazard-red">
-                    SCORE: {s.efficiency_score.toLocaleString()}
+                    SCORE: {s.efficiency_score?.toLocaleString() ?? 'N/A'}
                   </span>
                 </div>
 
                 <div className="space-y-3">
                   <div>
                     <div className="flex justify-between text-[10px] uppercase text-phosphor-subtle mb-1">
-                      <span>PASS@1 VERIFICATION:</span>
-                      <span className="text-phosphor-white font-bold">{passPct}% ({s.passed_cases}/{s.total_cases})</span>
+                      <span>WEIGHTED VERIFICATION:</span>
+                      <span className="text-phosphor-white font-bold">{passPct}% (RAW {s.pass_rate}%)</span>
                     </div>
                     <div className="h-2 w-full bg-[#18181B] border border-substrate-border">
                       <div

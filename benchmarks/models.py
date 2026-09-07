@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional
 import time
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class TokenUsage:
+    """Canonical usage: input/output exclude cache-read/thinking subsets."""
+
     input_tokens: int = 0
     output_tokens: int = 0
     thinking_tokens: int = 0
     cache_read_tokens: int = 0
     total_tokens: int = 0
     estimated_cost_usd: float = 0.0
+    telemetry_source: str = 'unavailable'
+    telemetry_complete: bool = False
 
     def calculate_cost(self, pricing: Dict[str, float]) -> float:
         cost = (
@@ -40,6 +45,10 @@ class TestCase:
     allowed_changed_files: List[str] = field(default_factory=list)
     required_changed_files: List[str] = field(default_factory=list)
     forbidden_substrings: List[str] = field(default_factory=list)
+    source_path: str = ''
+    case_hash: str = ''
+    fixture_hash: str = ''
+    test_source: str = 'inline-public'
 
 
 @dataclass
@@ -56,6 +65,8 @@ class BenchmarkResult:
     error_message: Optional[str] = None
     evaluator_logs: str = ''
     effort: Optional[str] = None
+    difficulty: str = 'medium'
+    metadata: Dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,12 +81,14 @@ class ModelSummary:
     total_cases: int
     passed_cases: int
     pass_rate: float
+    weighted_pass_rate: float
     avg_duration_seconds: float
     total_input_tokens: int
     total_output_tokens: int
     total_thinking_tokens: int
     total_cost_usd: float
-    efficiency_score: float  # (pass_rate * 100) / (cost + 0.01)
+    efficiency_score: Optional[float]
+    telemetry_complete: bool
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

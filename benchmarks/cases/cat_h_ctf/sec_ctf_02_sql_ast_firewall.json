@@ -1,7 +1,7 @@
 {
   "id": "sec_ctf_02_sql_ast_firewall",
   "title": "CTF / Security: SQL Injection AST Firewall & Payload Interceptor",
-  "category": "bugfix",
+  "category": "ctf",
   "difficulty": "hard",
   "timeout_seconds": 300,
   "description": "Implement an intelligent SQL security inspection engine that detects advanced SQL injection vectors without triggering false positives on complex legitimate queries.",

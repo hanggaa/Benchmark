@@ -1,12 +1,12 @@
 # 🧪 Personal LLM Benchmark Suite
 
-Framework pengujian benchmark otomatis untuk mengevaluasi model-model LLM pada CLI Agent (*Antigravity CLI, Codex CLI, OpenCode CLI, Claude Code CLI*) dengan metrik objektif, unit test tersembunyi, dan telemetri token riil.
+Framework pengujian benchmark otomatis untuk mengevaluasi model-model LLM pada CLI Agent (*Antigravity CLI, Codex CLI, OpenCode CLI, Claude Code CLI*) dengan assertion yang dapat direproduksi, workspace evaluasi terpisah, dan telemetri token.
 
 Mengukur performa secara empiris berdasarkan **4 Pilar Utama**:
-1. **Deterministic Accuracy (Pass@1)** — Unit test tersembunyi (`pytest`/`unittest`) dan validasi skema struktur/JSON tanpa risiko kontaminasi benchmark publik.
+1. **Deterministic Accuracy (Pass@1)** — Held-out assertions yang tidak ditempatkan di working directory agent dan completion proof yang menolak proses berhenti dini.
 2. **Token Economics & Reasoning Efficiency** — Input tokens, Output tokens, Thinking/Reasoning tokens, dan estimasi biaya riil ($).
 3. **Speed & Latency** — Rata-rata durasi eksekusi per soal (detik).
-4. **Value / Efficiency Score** — Rasio kepintaran terhadap biaya (`Pass Rate (%) / Cost ($)`).
+4. **Value / Efficiency Score** — Weighted accuracy kuadratik terhadap biaya; ditampilkan `N/A` jika telemetri adapter tidak lengkap.
 
 ---
 
@@ -14,14 +14,15 @@ Mengukur performa secara empiris berdasarkan **4 Pilar Utama**:
 
 ```text
 benchmarks/
-├── cases/                     # Kumpulan 20 skenario pengujian & hidden tests
+├── cases/                     # 20 definisi skenario dan public baseline assertions
 │   ├── cat_a_logic/           # Algoritma, LRU Cache TTL, Topo DAG, Async Worker Pool
 │   ├── cat_b_bugfix/          # Perbaikan bug keamanan JWT & ReDoS Linearization
 │   ├── cat_c_research/        # Validasi struktur PRD & Matrix DB Tradeoffs
 │   ├── cat_d_tool_use/        # Refactoring Surgical Connection Pool
 │   ├── cat_e_security/        # Archive extraction & multi-tenant authorization
 │   ├── cat_f_stateful_systems/# Payment ledger & crash-recoverable saga
-│   └── cat_g_agentic_repo/    # Multi-file repair & indirect prompt injection
+│   ├── cat_g_agentic_repo/    # Multi-file repair & indirect prompt injection
+│   └── cat_h_ctf/             # Reverse engineering & SQL injection defense
 ├── fixtures/                  # Workspace awal untuk pengujian agentic repository
 ├── evaluators/
 │   ├── __init__.py
@@ -88,7 +89,7 @@ python3 -m benchmarks.runner \
 ## 🚀 Panduan Eksekusi Benchmark
 
 ### 1. Dry Run (Melihat Execution Plan & Daftar Soal Tanpa Menghabiskan Token)
-Gunakan flag `--dry-run` untuk memverifikasi CLI mana yang akan menangani tiap model:
+Gunakan flag `--dry-run` untuk memverifikasi routing tanpa memanggil model atau menulis report:
 ```bash
 python3 -m benchmarks.runner \
   --models "Gemini 3.7 Flash (High), Gemini 3.6 Flash (High), gpt-5.6-sol --effort high, opencode/deepseek-v4-flash-free" \
@@ -147,7 +148,8 @@ Secara default batas waktu pengujian adalah **300 detik (5 menit)** per soal aga
 # Menyetel toleransi timeout ke 480 detik (8 menit) untuk soal sangat berat
 python3 -m benchmarks.runner \
   --models "Gemini 3.8 Flash (High), Gemini 3.7 Flash (High), Gemini 3.6 Flash (High), Gemini 3.1 Pro (High), gpt-5.6-terra --effort high, gpt-5.6-luna --effort high" \
-  --timeout 600
+  --timeout 600 \
+  --publish
 ```
 
 ---
@@ -174,16 +176,40 @@ python3 -m benchmarks.runner \
 | `security_02_tenant_authz` | Security | Hard | Fail-closed policy evaluation, deny precedence & tenant isolation |
 | `stateful_01_payment_ledger` | Stateful Systems | Hard | Idempotent out-of-order payment events with exact decimal invariants |
 | `stateful_02_saga_recovery` | Stateful Systems | Hard | Durable retry, crash recovery & exactly-once reverse compensation |
-| `agentic_01_multifile_regression` | Agentic Repo | Hard | Multi-file cache repair with hidden regression tests and diff allowlist |
+| `agentic_01_multifile_regression` | Agentic Repo | Hard | Multi-file cache repair with held-out regression tests and diff allowlist |
 | `agentic_02_indirect_injection` | Agentic Repo | Hard | Untrusted-document injection resistance, canary protection & scoped edit |
 
 ---
 
 ## 🌐 Live Web Dashboard & Deployment
 
-Setiap kali benchmark selesai dijalankan, runner secara otomatis memperbarui data di:
-* `benchmarks/reports/latest_report.md` (Laporan Leaderboard Markdown)
-* `src/data/benchmark-data.json` (Data mentah untuk Dashboard Web)
+Setiap benchmark nyata hanya menulis report timestamped ke `benchmarks/reports/`
+atau `--output-dir`. `latest_report.md` dan data dashboard tidak pernah ditimpa
+secara implisit. Publikasikan hanya full-suite run yang sudah diperiksa:
+
+```bash
+python3 -m benchmarks.runner \
+  --models "codex:gpt-5.6-sol:high, agy:Gemini 3.7 Flash (High)" \
+  --publish
+```
+
+`--publish` menolak kombinasi `--category` atau `--case`, serta run yang tidak
+menghasilkan jumlah result yang lengkap.
+
+Token dinormalisasi sebelum biaya dihitung: `input_tokens` tidak mencakup
+`cache_read_tokens`, dan `output_tokens` tidak mencakup `thinking_tokens` jika
+adapter asal melaporkannya sebagai subset. Nama sumber dan status kelengkapan
+telemetri disimpan di setiap result. `pricing_metadata` di `config.json`
+mencatat waktu verifikasi, sumber resmi, basis tarif, dan pengecualian. Perbarui
+metadata serta tarif bersama-sama sebelum memublikasikan ranking biaya baru.
+
+### Publish and Timeout
+```
+python3 -m benchmarks.runner \
+  --models "Gemini 3.8 Flash (High), Gemini 3.7 Flash (High), Gemini 3.6 Flash (High), Gemini 3.1 Pro (High)" \
+  --timeout 600 \
+  --publish
+```
 
 ### Menjalankan Dashboard di Local
 ```bash
@@ -215,8 +241,32 @@ Buat file JSON baru di dalam folder `benchmarks/cases/cat_<kategori>/`:
 ```
 
 `workspace_patch_test` menyalin fixture ke direktori sementara, menjalankan agent
-di sana, lalu memeriksa allowlist perubahan, required files, canary, dan hidden
-regression tests. Evaluator yang tidak dikenal selalu menghasilkan FAIL.
+di sana, lalu memeriksa allowlist perubahan, required files, canary, metadata
+`.git`, dan held-out regression tests. Test harness sendiri berada di luar
+workspace dan membutuhkan completion proof, sehingga `SystemExit(0)` atau
+`os._exit(0)` tidak dapat menghasilkan PASS.
+
+`case_hash` mencakup JSON case, test code yang aktif, dan isi fixture; artefak
+runtime seperti `__pycache__`, `.pyc`, dan `.DS_Store` diabaikan. `fixture_hash`
+terpisah disimpan pada provenance agar perubahan kontrak atau source fixture
+tidak dapat menghasilkan suite hash yang tampak sama.
+
+Adapter AGY membuat project sementara untuk setiap invocation agar direktori
+fixture benar-benar menjadi active workspace; tanpa ini AGY dapat jatuh kembali
+ke global scratch directory dan menghasilkan kegagalan agentic yang tidak valid.
+
+AGY headless tidak dapat menampilkan dialog persetujuan tool. Sebelum menjalankan
+case `workspace_patch_test` melalui AGY, aktifkan terminal sandbox dan set
+`toolPermission` ke `proceed-in-sandbox` pada konfigurasi AGY. Perintah di dalam
+sandbox dapat berjalan otomatis, sedangkan perintah di luar sandbox tetap
+memerlukan persetujuan. Adapter tidak memakai `--dangerously-skip-permissions`.
+Jika AGY melakukan soft-denial tetapi keluar dengan status 0, harness
+melaporkannya sebagai `CLI ERROR`, bukan sebagai kegagalan evaluator/model.
+
+Untuk benchmark privat, simpan override bernama `<case_id>.py` di luar repository
+dan gunakan `--private-tests-dir /path/to/private-tests` atau environment variable
+`BENCHMARK_PRIVATE_TESTS_DIR`. Inline `test_code` tetap didukung sebagai public
+baseline, tetapi tidak boleh disebut bebas kontaminasi.
 
 ### Validasi Harness
 
@@ -229,7 +279,13 @@ python3 -m benchmarks.runner --models "codex:gpt-5.6-sol:high" \
 ### Keamanan Eksekusi Kode
 
 Di macOS, jawaban Python dijalankan melalui `sandbox-exec` tanpa network dan
-dengan akses tulis terbatas pada direktori sementara. Pada platform tanpa
-sandbox lokal, evaluator menolak mengeksekusi kode. Variabel
+dengan akses tulis terbatas pada direktori sementara, resource limit, serta
+process-group timeout. Pada platform tanpa sandbox lokal, evaluator menolak
+mengeksekusi kode. Variabel
 `BENCHMARK_ALLOW_UNSANDBOXED_CODE=1` hanya boleh digunakan jika keseluruhan
 runner sudah berada di container/VM sekali pakai yang terisolasi.
+
+Adapter tidak menggunakan flag bypass permission. Karena `opencode --pure`
+bukan filesystem sandbox, case `workspace_patch_test` melalui OpenCode ditolak
+secara default. Gunakan `BENCHMARK_ALLOW_UNSAFE_OPENCODE=1` hanya di container
+eksternal sekali pakai.

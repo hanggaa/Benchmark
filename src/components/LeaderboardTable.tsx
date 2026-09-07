@@ -7,7 +7,7 @@ interface LeaderboardTableProps {
   onOpenCase: (item: BenchmarkItem) => void;
 }
 
-type SortField = 'pass_rate' | 'efficiency_score' | 'avg_duration_seconds' | 'total_thinking_tokens' | 'total_cost_usd';
+type SortField = 'pass_rate' | 'weighted_pass_rate' | 'efficiency_score' | 'avg_duration_seconds' | 'total_thinking_tokens' | 'total_cost_usd';
 
 export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
   summaries,
@@ -15,7 +15,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
   onOpenCase,
 }) => {
   const [selectedCli, setSelectedCli] = useState<string>('all');
-  const [sortField, setSortField] = useState<SortField>('pass_rate');
+  const [sortField, setSortField] = useState<SortField>('weighted_pass_rate');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [expandedModel, setExpandedModel] = useState<string | null>(null);
 
@@ -27,7 +27,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
       if (sortField === 'pass_rate') {
         const diff = sortAsc ? a.pass_rate - b.pass_rate : b.pass_rate - a.pass_rate;
         if (diff !== 0) return diff;
-        return b.efficiency_score - a.efficiency_score;
+        return (b.efficiency_score ?? -1) - (a.efficiency_score ?? -1);
       }
       const valA = a[sortField] ?? 0;
       const valB = b[sortField] ?? 0;
@@ -87,10 +87,10 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
               <th className="py-3 px-4 font-bold text-phosphor-white">ID // UNIT DESIGNATION</th>
               <th className="py-3 px-4 font-bold text-phosphor-white">HARNESS</th>
               <th
-                onClick={() => handleSort('pass_rate')}
+                onClick={() => handleSort('weighted_pass_rate')}
                 className="py-3 px-4 font-bold text-phosphor-white cursor-pointer hover:text-hazard-red transition-colors"
               >
-                PASS@1 ACCURACY
+                WEIGHTED ACCURACY
               </th>
               <th
                 onClick={() => handleSort('total_thinking_tokens')}
@@ -121,13 +121,18 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
           <tbody className="divide-y divide-substrate-border">
             {filteredSummaries.map((s, idx) => {
-              const isExpanded = expandedModel === s.model;
-              const modelRuns = benchmarkItems.filter((b) => b.model === s.model && b.cli === s.cli);
+              const rowKey = `${s.model}___${s.cli}___${s.effort || 'default'}`;
+              const isExpanded = expandedModel === rowKey;
+              const modelRuns = benchmarkItems.filter((b) => (
+                b.model === s.model
+                && b.cli === s.cli
+                && (b.effort || null) === (s.effort || null)
+              ));
 
               return (
                 <React.Fragment key={`${s.model}-${s.cli}-${idx}`}>
                   <tr
-                    onClick={() => setExpandedModel(isExpanded ? null : s.model)}
+                    onClick={() => setExpandedModel(isExpanded ? null : rowKey)}
                     className="cursor-pointer hover:bg-substrate-elevated transition-colors group"
                   >
                     {/* Model ID */}
@@ -155,9 +160,9 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                     {/* Pass Rate */}
                     <td className="py-3 px-4">
                       <span className={`font-bold ${
-                        s.pass_rate >= 90 ? 'text-telemetry-green' : s.pass_rate > 0 ? 'text-amber-400' : 'text-hazard-red'
+                        s.weighted_pass_rate >= 90 ? 'text-telemetry-green' : s.weighted_pass_rate > 0 ? 'text-amber-400' : 'text-hazard-red'
                       }`}>
-                        [{s.pass_rate}% // {s.passed_cases}/{s.total_cases}]
+                        [{s.weighted_pass_rate}% // RAW {s.pass_rate}%]
                       </span>
                     </td>
 
@@ -178,7 +183,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
                     {/* Efficiency Score */}
                     <td className="py-3 px-4 text-right font-black text-phosphor-white">
-                      {s.efficiency_score.toLocaleString()}
+                      {s.efficiency_score?.toLocaleString() ?? 'N/A'}
                     </td>
                   </tr>
 

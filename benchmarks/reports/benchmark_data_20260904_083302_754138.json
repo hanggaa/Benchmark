@@ -1,0 +1,49 @@
+[
+  {
+    "case_id": "agentic_01_multifile_regression",
+    "case_title": "Repository-Level HTTP Cache Regression Repair",
+    "category": "agentic_repo",
+    "model": "Gemini 3.1 Pro (High)",
+    "cli": "agy",
+    "passed": true,
+    "duration_seconds": 110.9091949169997,
+    "token_usage": {
+      "input_tokens": 57262,
+      "output_tokens": 3453,
+      "thinking_tokens": 6928,
+      "cache_read_tokens": 203013,
+      "total_tokens": 270656,
+      "estimated_cost_usd": 0.425753,
+      "telemetry_source": "agy-json",
+      "telemetry_complete": true
+    },
+    "raw_response": "I've resolved the Cache-Control regressions based on the requirements. \n\nHere is a summary of the changes:\n1. **`cachelib/cache_control.py`**:\n   - Replaced `header.split(\",\")` with a custom parser that respects double quotes so commas inside extensions aren't treated as separators.\n   - Normalized directive names using `.lower()` to ensure case-insensitivity.\n   - Added robust `try-except` parsing for `max-age` and `stale-if-error` so that malformed strings do not crash the app. `max-age` falls back to `-1` (preventing caching) and `stale-if-error` defaults to `0` for malformed/negative values.\n\n2. **`cachelib/http_cache.py`**:\n   - Updated `put` to check if `no_store` is true, `max_age` is omitted, or `max_age <= 0`. In these cases, it safely removes the key from the cache (if it exists) and returns `False`.\n   - Updated `get` to strictly check bounds according to the lifecycle requirements:\n     - The entry is only served as fresh if `now < expires_at` (changed from `<=` to `<`).\n     - It allows serving on errors only when `now < stale_until`. If `now` is past `stale_until`, the entry is fully removed from the dictionary.\n     - Preserved the entry (without serving it) if the request didn't fail but the entry is stale and hasn't exceeded the `stale_until` threshold yet.\n\nI ran the visible tests (`python3 -m unittest discover tests`) and they are passing successfully. The API remains unchanged.\n",
+    "error_message": null,
+    "evaluator_logs": "Workspace diff policy and all regression tests completed.",
+    "effort": "high",
+    "difficulty": "hard",
+    "metadata": {
+      "run_id": "5a99f667-43a2-42ec-bb9f-abe792570341",
+      "started_at_utc": "2026-09-04T08:31:11.358835+00:00",
+      "suite_hash": "8ba754a7679f82b38dc03ac252ac818edcd27f942e3d0265cac47d2275839cc6",
+      "case_count": 1,
+      "git_commit": "5dcf963aa47cf9f628aa56f7c63086f04a56d592",
+      "git_dirty": true,
+      "python_version": "3.13.13",
+      "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+      "cli_versions": {
+        "agy": "1.1.26"
+      },
+      "config_hash": "fd4e95d1c4f7c32f54b68d171e6d756ef1a5177fdfe7d10bdfef39c9f9f6eea1",
+      "pricing_metadata": {
+        "status": "manual",
+        "last_verified_utc": null,
+        "note": "Verify provider pricing and token semantics before publishing cost rankings."
+      },
+      "case_hash": "008d9d0bb242561fda0b6921852ef45758751d9313878d143d847c054fa282bb",
+      "case_source": "benchmarks/cases/cat_g_agentic_repo/agentic_01_multifile_regression.json",
+      "test_source": "inline-public"
+    },
+    "timestamp": 1788510782.754057
+  }
+]

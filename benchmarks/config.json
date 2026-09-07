@@ -1,53 +1,64 @@
 {
   "default_timeout_seconds": 300,
+  "pricing_metadata": {
+    "status": "verified_with_caveats",
+    "last_verified_utc": "2026-09-04T08:42:59Z",
+    "basis": "USD per 1M tokens using standard paid text API and short-context rates; thinking tokens use the output-token rate.",
+    "sources": {
+      "google": "https://ai.google.dev/gemini-api/docs/pricing",
+      "openai": "https://developers.openai.com/api/docs/pricing",
+      "anthropic": "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    },
+    "note": "Excludes batch/flex/priority/fast tiers, long-context uplifts, cache writes/storage, regional uplifts, and tool-call fees. Gemini 3.8/3.7/3.6 promotional standard rates are valid through 2026-12-31. Retired Claude 3.x entries are retained for historical comparisons. The default row is an unverified fallback, not a provider price."
+  },
   "pricing_per_1m_tokens": {
     "gemini-3.8-flash": {
       "input": 0.75,
       "output": 3.75,
       "thinking": 3.75,
-      "cache_read": 0.1875
+      "cache_read": 0.075
     },
     "gemini-3.7-flash": {
       "input": 0.75,
       "output": 3.75,
       "thinking": 3.75,
-      "cache_read": 0.1875
+      "cache_read": 0.075
     },
     "gemini-3.6-flash": {
-      "input": 1.50,
-      "output": 7.50,
-      "thinking": 7.50,
-      "cache_read": 0.375
+      "input": 0.75,
+      "output": 3.75,
+      "thinking": 3.75,
+      "cache_read": 0.075
     },
     "gemini-3.5-flash": {
       "input": 1.50,
       "output": 9.00,
       "thinking": 9.00,
-      "cache_read": 0.375
+      "cache_read": 0.15
     },
     "gemini-3.1-pro": {
-      "input": 2.50,
-      "output": 15.00,
-      "thinking": 15.00,
-      "cache_read": 0.625
+      "input": 2.00,
+      "output": 12.00,
+      "thinking": 12.00,
+      "cache_read": 0.20
     },
     "gemini-2.5-pro": {
       "input": 1.25,
-      "output": 5.00,
-      "thinking": 5.00,
-      "cache_read": 0.3125
+      "output": 10.00,
+      "thinking": 10.00,
+      "cache_read": 0.125
     },
     "gemini-2.5-flash": {
-      "input": 0.10,
-      "output": 0.40,
-      "thinking": 0.40,
-      "cache_read": 0.025
+      "input": 0.30,
+      "output": 2.50,
+      "thinking": 2.50,
+      "cache_read": 0.03
     },
     "gpt-5.6-sol": {
-      "input": 5.00,
-      "output": 30.00,
-      "thinking": 30.00,
-      "cache_read": 0.500
+      "input": 4.00,
+      "output": 20.00,
+      "thinking": 20.00,
+      "cache_read": 0.400
     },
     "gpt-5.6-terra": {
       "input": 2.00,

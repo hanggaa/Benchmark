@@ -4,10 +4,11 @@
   "category": "research",
   "difficulty": "medium",
   "description": "Produce a comparative matrix between pgvector, Qdrant, and Pinecone with cost projections.",
-  "prompt": "Provide a comprehensive technical comparison for vector search engines supporting a 10-million vector workload (1536 dimensions): pgvector (PostgreSQL), Qdrant, and Pinecone.\n\nYou MUST include:\n1. A Markdown table with EXACT columns: `| Engine | Architecture Type | Estimated Monthly Cost | Latency p95 | Key Pros | Key Cons |`\n2. Rows for `pgvector`, `Qdrant`, and `Pinecone`.\n3. Specific dollar estimates ($) in the cost column.\n4. A concluding section with heading `## Recommendation Matrix`.\n",
+  "prompt": "Provide a comprehensive technical comparison for vector search engines supporting a 10-million vector workload (1536 dimensions): pgvector (PostgreSQL), Qdrant, and Pinecone.\n\nYou MUST include:\n1. An `## Assumptions` section defining query volume, availability, region, metadata size, and whether estimates include operations and egress.\n2. A Markdown table with EXACT columns: `| Engine | Architecture Type | Estimated Monthly Cost | Latency p95 | Key Pros | Key Cons |`\n3. Rows for `pgvector`, `Qdrant`, and `Pinecone`, each with a dollar estimate and p95 latency in milliseconds.\n4. A concluding section with heading `## Recommendation Matrix` that gives conditional recommendations rather than one universal winner.\n5. Clearly label estimates as planning assumptions rather than vendor guarantees.\n",
   "evaluator_type": "schema_check",
   "expected_structure": {
     "required_headings": [
+      "Assumptions",
       "Recommendation Matrix"
     ],
     "required_substrings": [
@@ -15,7 +16,27 @@
       "pgvector",
       "Qdrant",
       "Pinecone",
-      "$"
+      "$",
+      "planning"
+    ],
+    "min_words": 300,
+    "required_table_columns": [
+      "Engine",
+      "Architecture Type",
+      "Estimated Monthly Cost",
+      "Latency p95",
+      "Key Pros",
+      "Key Cons"
+    ],
+    "required_table_first_column_values": [
+      "pgvector",
+      "Qdrant",
+      "Pinecone"
+    ],
+    "regex_patterns": [
+      "(?im)^\\|\\s*(?:\\*\\*)?pgvector(?:\\*\\*)?(?:\\s*\\([^|\\n]*\\))?\\s*\\|[^\\n]*\\$[^\\n]*[0-9]\\s*ms\\b[^\\n]*\\|$",
+      "(?im)^\\|\\s*(?:\\*\\*)?Qdrant(?:\\*\\*)?(?:\\s*\\([^|\\n]*\\))?\\s*\\|[^\\n]*\\$[^\\n]*[0-9]\\s*ms\\b[^\\n]*\\|$",
+      "(?im)^\\|\\s*(?:\\*\\*)?Pinecone(?:\\*\\*)?(?:\\s*\\([^|\\n]*\\))?\\s*\\|[^\\n]*\\$[^\\n]*[0-9]\\s*ms\\b[^\\n]*\\|$"
     ]
   },
   "timeout_seconds": 300

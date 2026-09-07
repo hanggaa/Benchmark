@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import argparse
-import glob
+import hashlib
 import json
 import os
+import platform
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
-import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,7 +21,7 @@ from benchmarks.evaluators.evaluators import (
     WorkspacePatchEvaluator,
 )
 from benchmarks.models import BenchmarkResult, TestCase, TokenUsage
-from benchmarks.reporters.reporters import JSONReporter, MarkdownReporter
+from benchmarks.reporters.reporters import JSONReporter, MarkdownReporter, atomic_write_text
 from benchmarks.runners.antigravity_runner import AntigravityRunner
 from benchmarks.runners.claude_runner import ClaudeRunner
 from benchmarks.runners.codex_runner import CodexRunner
@@ -26,6 +29,35 @@ from benchmarks.runners.opencode_runner import OpenCodeRunner
 
 
 SUPPORTED_EVALUATORS = {"python_unit_test", "schema_check", "workspace_patch_test"}
+SUPPORTED_DIFFICULTIES = {"easy", "medium", "hard"}
+
+
+def hash_workspace_fixture(fixture: Path) -> str:
+    """Hash stable fixture inputs while rejecting links outside the fixture."""
+    digest = hashlib.sha256()
+    for path in sorted(fixture.rglob("*"), key=lambda item: item.as_posix()):
+        relative = path.relative_to(fixture)
+        if "__pycache__" in relative.parts or path.suffix == ".pyc":
+            continue
+        if path.name == ".DS_Store":
+            continue
+        if path.is_symlink():
+            raise BenchmarkConfigurationError(
+                f"workspace fixture must not contain symlinks: {relative}"
+            )
+        if not path.is_file():
+            continue
+        relative_bytes = relative.as_posix().encode("utf-8")
+        content = path.read_bytes()
+        digest.update(len(relative_bytes).to_bytes(8, "big"))
+        digest.update(relative_bytes)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+class BenchmarkConfigurationError(ValueError):
+    """Raised when a benchmark case or run is not reproducible or safe."""
 
 
 def load_config() -> Dict[str, Any]:
@@ -38,29 +70,201 @@ def load_config() -> Dict[str, Any]:
 def load_test_cases(
     categories: Optional[List[str]] = None,
     case_ids: Optional[List[str]] = None,
+    private_tests_dir: Optional[str] = None,
 ) -> List[TestCase]:
     cases_dir = Path(__file__).parent / "cases"
-    case_files = glob.glob(str(cases_dir / "**" / "*.json"), recursive=True)
+    case_files = sorted(cases_dir.rglob("*.json"))
     test_cases: List[TestCase] = []
+    errors: List[str] = []
+    seen_ids: Dict[str, Path] = {}
+
+    configured_private_dir = private_tests_dir or os.environ.get(
+        "BENCHMARK_PRIVATE_TESTS_DIR"
+    )
+    private_root = (
+        Path(configured_private_dir).expanduser().resolve()
+        if configured_private_dir
+        else None
+    )
+    if private_root is not None and not private_root.is_dir():
+        raise BenchmarkConfigurationError(
+            f"Private tests directory does not exist: {private_root}"
+        )
 
     for fpath in sorted(case_files):
         try:
-            data = json.loads(Path(fpath).read_text(encoding="utf-8"))
+            raw_case = fpath.read_text(encoding="utf-8")
+            data = json.loads(raw_case)
+            if not isinstance(data, dict):
+                raise BenchmarkConfigurationError("top-level JSON must be an object")
+
+            for key in ("id", "title", "category", "prompt", "evaluator_type"):
+                if not isinstance(data.get(key), str) or not data[key].strip():
+                    raise BenchmarkConfigurationError(
+                        f"'{key}' must be a non-empty string"
+                    )
+
+            case_id = data["id"]
+            if case_id in seen_ids:
+                raise BenchmarkConfigurationError(
+                    f"duplicate id '{case_id}' also used by {seen_ids[case_id]}"
+                )
+            seen_ids[case_id] = fpath
+
+            evaluator_type = data["evaluator_type"]
+            if evaluator_type not in SUPPORTED_EVALUATORS:
+                raise BenchmarkConfigurationError(
+                    f"unsupported evaluator_type '{evaluator_type}'"
+                )
+
+            difficulty = data.get("difficulty", "medium")
+            if difficulty not in SUPPORTED_DIFFICULTIES:
+                raise BenchmarkConfigurationError(
+                    f"difficulty must be one of {sorted(SUPPORTED_DIFFICULTIES)}"
+                )
+
+            timeout_seconds = data.get("timeout_seconds", 120)
+            if (
+                not isinstance(timeout_seconds, int)
+                or isinstance(timeout_seconds, bool)
+                or timeout_seconds <= 0
+            ):
+                raise BenchmarkConfigurationError(
+                    "timeout_seconds must be a positive integer"
+                )
+
+            list_fields = (
+                "allowed_changed_files",
+                "required_changed_files",
+                "forbidden_substrings",
+            )
+            for key in list_fields:
+                value = data.get(key, [])
+                if not isinstance(value, list) or not all(
+                    isinstance(item, str) for item in value
+                ):
+                    raise BenchmarkConfigurationError(
+                        f"'{key}' must be a list of strings"
+                    )
+
+            expected_structure = data.get("expected_structure", {})
+            if not isinstance(expected_structure, dict):
+                raise BenchmarkConfigurationError(
+                    "expected_structure must be an object"
+                )
+            schema_list_fields = (
+                "required_headings",
+                "required_substrings",
+                "forbidden_substrings",
+                "regex_patterns",
+                "required_exact_lines",
+                "required_table_columns",
+                "required_table_first_column_values",
+            )
+            for key in schema_list_fields:
+                value = expected_structure.get(key, [])
+                if not isinstance(value, list) or not all(
+                    isinstance(item, str) for item in value
+                ):
+                    raise BenchmarkConfigurationError(
+                        f"expected_structure.{key} must be a list of strings"
+                    )
+            min_words = expected_structure.get("min_words", 0)
+            if (
+                not isinstance(min_words, int)
+                or isinstance(min_words, bool)
+                or min_words < 0
+            ):
+                raise BenchmarkConfigurationError(
+                    "expected_structure.min_words must be a non-negative integer"
+                )
+            section_words = expected_structure.get("min_section_words", {})
+            if not isinstance(section_words, dict) or not all(
+                isinstance(key, str)
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
+                for key, value in section_words.items()
+            ):
+                raise BenchmarkConfigurationError(
+                    "expected_structure.min_section_words must map headings to "
+                    "non-negative integers"
+                )
+            for pattern in expected_structure.get("regex_patterns", []):
+                re.compile(pattern)
+
+            test_code = data.get("test_code", "")
+            test_source = "inline-public"
+            if private_root is not None:
+                private_test = (private_root / f"{case_id}.py").resolve()
+                if private_root != private_test and private_root not in private_test.parents:
+                    raise BenchmarkConfigurationError("private test path escaped its root")
+                if private_test.is_file():
+                    test_code = private_test.read_text(encoding="utf-8")
+                    test_source = "private"
+
+            if evaluator_type in {"python_unit_test", "workspace_patch_test"}:
+                if not isinstance(test_code, str) or not test_code.strip():
+                    raise BenchmarkConfigurationError(
+                        "executable evaluators require non-empty test code"
+                    )
+            if evaluator_type == "schema_check" and not expected_structure:
+                raise BenchmarkConfigurationError(
+                    "schema_check requires expected_structure"
+                )
+            fixture_hash = ""
+            if evaluator_type == "workspace_patch_test":
+                if not data.get("workspace_fixture"):
+                    raise BenchmarkConfigurationError(
+                        "workspace_patch_test requires workspace_fixture"
+                    )
+                if not data.get("allowed_changed_files"):
+                    raise BenchmarkConfigurationError(
+                        "workspace_patch_test requires allowed_changed_files"
+                    )
+                fixtures_root = (Path(__file__).parent / "fixtures").resolve()
+                fixture = (Path(__file__).parent / data["workspace_fixture"]).resolve()
+                if (
+                    fixture == fixtures_root
+                    or fixtures_root not in fixture.parents
+                    or not fixture.is_dir()
+                ):
+                    raise BenchmarkConfigurationError(
+                        f"workspace fixture is invalid or not found: {fixture}"
+                    )
+                fixture_hash = hash_workspace_fixture(fixture)
+
+            canonical_case = json.dumps(
+                data, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+            case_hash = hashlib.sha256(
+                (
+                    canonical_case
+                    + "\n"
+                    + test_code
+                    + "\nfixture:"
+                    + fixture_hash
+                ).encode("utf-8")
+            ).hexdigest()
             tc = TestCase(
-                id=data["id"],
+                id=case_id,
                 title=data["title"],
                 category=data["category"],
                 description=data.get("description", ""),
                 prompt=data["prompt"],
-                evaluator_type=data["evaluator_type"],
-                test_code=data.get("test_code", ""),
-                expected_structure=data.get("expected_structure", {}),
-                timeout_seconds=data.get("timeout_seconds", 120),
-                difficulty=data.get("difficulty", "medium"),
+                evaluator_type=evaluator_type,
+                test_code=test_code,
+                expected_structure=expected_structure,
+                timeout_seconds=timeout_seconds,
+                difficulty=difficulty,
                 workspace_fixture=data.get("workspace_fixture", ""),
                 allowed_changed_files=data.get("allowed_changed_files", []),
                 required_changed_files=data.get("required_changed_files", []),
                 forbidden_substrings=data.get("forbidden_substrings", []),
+                source_path=str(fpath.relative_to(Path(__file__).parent.parent)),
+                case_hash=case_hash,
+                fixture_hash=fixture_hash,
+                test_source=test_source,
             )
 
             if categories and tc.category not in categories:
@@ -69,8 +273,13 @@ def load_test_cases(
                 continue
 
             test_cases.append(tc)
-        except Exception as e:
-            print(f"[WARN] Failed to load case file {fpath}: {e}")
+        except Exception as exc:
+            errors.append(f"{fpath}: {exc}")
+
+    if errors:
+        raise BenchmarkConfigurationError(
+            "Invalid benchmark case configuration:\n- " + "\n- ".join(errors)
+        )
 
     return test_cases
 
@@ -118,8 +327,14 @@ def infer_cli_for_model(model_name: str, requested_clis: List[str]) -> str:
     if "gemini" in m:
         return "agy"
 
-    # Fallback to first CLI requested
-    return requested_clis[0] if requested_clis else "agy"
+    # Fallback only when the caller supplied a concrete adapter. Guessing an
+    # adapter for an unknown model makes the resulting comparison ambiguous.
+    concrete_clis = [cli for cli in requested_clis if cli not in ("auto", "all")]
+    if concrete_clis:
+        return concrete_clis[0]
+    raise BenchmarkConfigurationError(
+        f"Cannot infer a CLI adapter for model '{model_name}'. Use cli:model."
+    )
 
 
 def parse_model_spec(raw_spec: str, global_effort: Optional[str] = None, default_cli: Optional[str] = None) -> Tuple[str, str, Optional[str]]:
@@ -142,6 +357,13 @@ def parse_model_spec(raw_spec: str, global_effort: Optional[str] = None, default
             cli = parts[0].lower()
             spec = parts[1].strip()
 
+    # Optional trailing effort in cli:model:effort syntax. Restrict the suffix
+    # to known effort names so provider-specific model tags remain untouched.
+    effort_match = re.match(r"^(.*):(low|medium|high|max|xhigh|ultra)$", spec, re.I)
+    if effort_match:
+        spec = effort_match.group(1).strip()
+        effort = effort_match.group(2).lower()
+
     # Check for embedded --effort in string
     if " --effort " in spec:
         m_parts = spec.split(" --effort ")
@@ -160,6 +382,88 @@ def parse_model_spec(raw_spec: str, global_effort: Optional[str] = None, default
     return cli, spec, effort
 
 
+def _git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).parent.parent,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def _git_is_dirty() -> Optional[bool]:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=Path(__file__).parent.parent,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        return bool(result.stdout.strip()) if result.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _cli_version(cli_name: str) -> str:
+    binary = {
+        "antigravity": "agy",
+        "agy": "agy",
+        "claude-code": "claude",
+        "claude": "claude",
+        "codex-cli": "codex",
+        "codex": "codex",
+        "open-code": "opencode",
+        "opencode": "opencode",
+    }.get(cli_name, cli_name)
+    if not shutil.which(binary):
+        return "not-installed"
+    try:
+        result = subprocess.run(
+            [binary, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        output = (result.stdout or result.stderr).strip().splitlines()
+        return output[0] if result.returncode == 0 and output else "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def _run_metadata(
+    test_cases: List[TestCase], execution_plan: List[Tuple[str, str, Optional[str]]]
+) -> Dict[str, Any]:
+    config = load_config()
+    suite_material = "\n".join(
+        f"{case.id}:{case.case_hash}" for case in sorted(test_cases, key=lambda c: c.id)
+    )
+    return {
+        "run_id": str(uuid.uuid4()),
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "suite_hash": hashlib.sha256(suite_material.encode("utf-8")).hexdigest(),
+        "case_count": len(test_cases),
+        "git_commit": _git_commit(),
+        "git_dirty": _git_is_dirty(),
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "cli_versions": {
+            cli: _cli_version(cli) for cli in sorted({item[0] for item in execution_plan})
+        },
+        "config_hash": hashlib.sha256(
+            json.dumps(config, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest(),
+        "pricing_metadata": config.get("pricing_metadata", {}),
+    }
+
+
 def run_benchmark(
     clis: List[str],
     models: List[str],
@@ -169,9 +473,16 @@ def run_benchmark(
     timeout_override: Optional[int] = None,
     output_dir: Optional[str] = None,
     dry_run: bool = False,
+    publish: bool = False,
+    private_tests_dir: Optional[str] = None,
 ) -> List[BenchmarkResult]:
     config = load_config()
-    test_cases = load_test_cases(categories, case_ids)
+    test_cases = load_test_cases(categories, case_ids, private_tests_dir)
+
+    if publish and (categories or case_ids):
+        raise BenchmarkConfigurationError(
+            "Refusing to publish a filtered run. Remove --category/--case."
+        )
 
     if not test_cases:
         print("❌ No matching test cases found.")
@@ -201,14 +512,37 @@ def run_benchmark(
     for c_cli, c_model, c_effort in execution_plan:
         effort_str = f" [Effort: {c_effort}]" if c_effort else ""
         print(f"   ↳ Model: '{c_model}'{effort_str} via CLI: '{c_cli}'")
-    timeout_display = f"• Global Timeout: {timeout_override}s\n" if timeout_override else ""
+    timeout_display = (
+        f"• Per-case Timeout Override: {timeout_override}s\n"
+        if timeout_override
+        else ""
+    )
     print(f"• Test Cases: {len(test_cases)} case(s)")
     if timeout_display:
         print(timeout_display, end="")
     print("=" * 70)
 
+    if dry_run:
+        for tc in test_cases:
+            print(
+                f"⏩ {tc.id} [{tc.difficulty}] via {tc.evaluator_type} "
+                f"(tests: {tc.test_source})"
+            )
+        print("Dry run complete; no model calls or report files were created.")
+        return []
+
     results: List[BenchmarkResult] = []
     runners_cache: Dict[str, Any] = {}
+    run_metadata = _run_metadata(test_cases, execution_plan)
+
+    def metadata_for(tc: TestCase) -> Dict[str, Any]:
+        return {
+            **run_metadata,
+            "case_hash": tc.case_hash,
+            "fixture_hash": tc.fixture_hash or None,
+            "case_source": tc.source_path,
+            "test_source": tc.test_source,
+        }
 
     for cli_name, model, model_effort in execution_plan:
         if cli_name not in runners_cache:
@@ -226,11 +560,6 @@ def run_benchmark(
         for idx, tc in enumerate(test_cases, 1):
             print(f"[{idx}/{len(test_cases)}] Running: {tc.title} ({tc.id})... ", end="", flush=True)
 
-            if dry_run:
-                time.sleep(0.05)
-                print("⏩ SKIPPED (Dry Run)")
-                continue
-
             if tc.evaluator_type not in SUPPORTED_EVALUATORS:
                 eval_logs = f"Unknown evaluator type: {tc.evaluator_type}"
                 print("❌ FAIL (invalid benchmark configuration)")
@@ -246,6 +575,8 @@ def run_benchmark(
                         token_usage=TokenUsage(),
                         evaluator_logs=eval_logs,
                         effort=model_effort,
+                        difficulty=tc.difficulty,
+                        metadata=metadata_for(tc),
                     )
                 )
                 continue
@@ -277,14 +608,23 @@ def run_benchmark(
                         effort=model_effort,
                         timeout_seconds=current_timeout,
                         cwd=str(workspace),
+                        workspace_mode=True,
                     )
             else:
-                resp, tokens, duration, err = runner.run_prompt(
-                    prompt=tc.prompt,
-                    model=model,
-                    effort=model_effort,
-                    timeout_seconds=current_timeout,
-                )
+                # Never expose the repository as the CLI working directory for
+                # response-only cases. This keeps held-out tests and unrelated
+                # project context outside the agent's execution workspace.
+                with tempfile.TemporaryDirectory(
+                    prefix=f"benchmark_prompt_{tc.id}_"
+                ) as prompt_workspace:
+                    resp, tokens, duration, err = runner.run_prompt(
+                        prompt=tc.prompt,
+                        model=model,
+                        effort=model_effort,
+                        timeout_seconds=current_timeout,
+                        cwd=prompt_workspace,
+                        workspace_mode=False,
+                    )
 
             if err:
                 print(f"❌ CLI ERROR ({duration:.1f}s)")
@@ -302,6 +642,8 @@ def run_benchmark(
                         token_usage=tokens,
                         error_message=err,
                         effort=model_effort,
+                        difficulty=tc.difficulty,
+                        metadata=metadata_for(tc),
                     )
                 )
                 if temp_workspace is not None:
@@ -333,6 +675,7 @@ def run_benchmark(
                         tc.allowed_changed_files,
                         tc.required_changed_files,
                         tc.forbidden_substrings,
+                        timeout_seconds=min(current_timeout, 60),
                     )
             else:
                 eval_passed = False
@@ -343,7 +686,10 @@ def run_benchmark(
 
             status_icon = "✅ PASS" if eval_passed else "❌ FAIL"
             print(
-                f"{status_icon} ({duration:.1f}s | In: {tokens.input_tokens:,} | Out: {tokens.output_tokens:,} | Think: {tokens.thinking_tokens:,} | ${tokens.estimated_cost_usd:.5f})"
+                f"{status_icon} ({duration:.1f}s | In: {tokens.input_tokens:,} | "
+                f"Out: {tokens.output_tokens:,} | Think: {tokens.thinking_tokens:,} | "
+                f"Cache: {tokens.cache_read_tokens:,} | Total: {tokens.total_tokens:,} | "
+                f"${tokens.estimated_cost_usd:.5f})"
             )
 
             if not eval_passed and eval_logs:
@@ -363,34 +709,56 @@ def run_benchmark(
                     raw_response=resp,
                     evaluator_logs=eval_logs,
                     effort=model_effort,
+                    difficulty=tc.difficulty,
+                    metadata=metadata_for(tc),
                 )
             )
+
+    if not results:
+        print("No benchmark results were produced; no reports were written.")
+        return []
 
     # Generate and save reports
     out_path = Path(output_dir) if output_dir else Path(__file__).parent / "reports"
     out_path.mkdir(parents=True, exist_ok=True)
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
 
     md_report = MarkdownReporter.generate_report(results)
     md_file = out_path / f"benchmark_report_{timestamp}.md"
-    md_file.write_text(md_report, encoding="utf-8")
+    atomic_write_text(md_file, md_report)
 
     json_file = out_path / f"benchmark_data_{timestamp}.json"
     JSONReporter.save_report(results, json_file)
 
-    latest_md = out_path / "latest_report.md"
-    latest_md.write_text(md_report, encoding="utf-8")
-
-    if results:
-        # Also save to frontend web data folder
+    if publish:
+        expected_results = len(test_cases) * len(execution_plan)
+        if len(results) != expected_results:
+            raise BenchmarkConfigurationError(
+                "Refusing to publish an incomplete run: "
+                f"expected {expected_results} results, received {len(results)}."
+            )
+        cli_errors = [result for result in results if result.error_message]
+        if cli_errors:
+            examples = ", ".join(
+                f"{result.model}/{result.case_id}" for result in cli_errors[:3]
+            )
+            raise BenchmarkConfigurationError(
+                "Refusing to publish a run containing "
+                f"{len(cli_errors)} CLI/infrastructure error(s): {examples}."
+            )
+        latest_md = out_path / "latest_report.md"
+        atomic_write_text(latest_md, md_report)
         web_data_file = Path(__file__).parent.parent / "src" / "data" / "benchmark-data.json"
         web_data_file.parent.mkdir(parents=True, exist_ok=True)
         JSONReporter.save_report(results, web_data_file)
 
     print("\n" + "=" * 70)
     print("🎉 BENCHMARK RUN COMPLETE!")
-    print(f"📄 Latest Report Saved to: {latest_md}")
+    print(f"📄 Markdown Report Saved to: {md_file}")
     print(f"📄 Full JSON Data Saved to: {json_file}")
+    if publish:
+        print(f"📄 Published Latest Report: {latest_md}")
+    print(f"🌐 Dashboard Published: {'yes' if publish else 'no'}")
     print("=" * 70)
     print("\n" + md_report)
 
@@ -407,6 +775,16 @@ def main():
     parser.add_argument("--timeout", type=int, default=None, help="Global timeout limit in seconds (e.g. 300, 360, 480)")
     parser.add_argument("--output-dir", default=None, help="Output directory for reports")
     parser.add_argument("--dry-run", action="store_true", help="List test cases without executing LLM calls")
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="Publish a complete, unfiltered run to the web dashboard",
+    )
+    parser.add_argument(
+        "--private-tests-dir",
+        default=None,
+        help="Optional directory containing private <case_id>.py overrides",
+    )
 
     args = parser.parse_args()
 
@@ -424,6 +802,8 @@ def main():
         timeout_override=args.timeout,
         output_dir=args.output_dir,
         dry_run=args.dry_run,
+        publish=args.publish,
+        private_tests_dir=args.private_tests_dir,
     )
 
 

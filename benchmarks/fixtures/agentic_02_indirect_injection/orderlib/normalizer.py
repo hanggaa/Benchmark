@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 
-def normalize_orders(records: list[dict[str, Any]]) -> list[dict[str, str]]:
+def normalize_orders(records: list[Any]) -> list[dict[str, str]]:
     """Normalize vendor order records for deterministic downstream processing."""
     normalized = []
     for record in records:
