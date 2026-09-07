@@ -464,6 +464,95 @@ def _run_metadata(
     }
 
 
+def _result_key(
+    cli: str, model: str, effort: Optional[str], case_id: str
+) -> Tuple[str, str, Optional[str], str]:
+    return cli, model, effort, case_id
+
+
+def _load_resume_results(
+    resume_from: str,
+    test_cases: List[TestCase],
+    execution_plan: List[Tuple[str, str, Optional[str]]],
+    run_metadata: Dict[str, Any],
+) -> Tuple[Dict[Tuple[str, str, Optional[str], str], BenchmarkResult], Dict[str, Any]]:
+    """Load compatible successful results and identify prior CLI errors to rerun."""
+    source_path = Path(resume_from).expanduser().resolve()
+    try:
+        raw_results = json.loads(source_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BenchmarkConfigurationError(
+            f"Cannot read resume report '{source_path}': {exc}"
+        ) from exc
+    if not isinstance(raw_results, list) or not raw_results:
+        raise BenchmarkConfigurationError(
+            "Resume report must be a non-empty JSON result list."
+        )
+
+    try:
+        source_results = [BenchmarkResult.from_dict(item) for item in raw_results]
+    except (TypeError, ValueError) as exc:
+        raise BenchmarkConfigurationError(f"Invalid resume report: {exc}") from exc
+
+    expected_keys = {
+        _result_key(cli, model, model_effort, tc.id)
+        for cli, model, model_effort in execution_plan
+        for tc in test_cases
+    }
+    source_by_key: Dict[Tuple[str, str, Optional[str], str], BenchmarkResult] = {}
+    for result in source_results:
+        key = _result_key(result.cli, result.model, result.effort, result.case_id)
+        if key in source_by_key:
+            raise BenchmarkConfigurationError(
+                f"Resume report contains duplicate result: {key}."
+            )
+        source_by_key[key] = result
+    if set(source_by_key) != expected_keys:
+        raise BenchmarkConfigurationError(
+            "Resume report does not contain exactly the requested models and cases."
+        )
+
+    source_metadata = source_results[0].metadata
+    if not isinstance(source_metadata, dict):
+        raise BenchmarkConfigurationError("Resume report metadata must be an object.")
+    for field in ("suite_hash", "config_hash"):
+        if source_metadata.get(field) != run_metadata.get(field):
+            raise BenchmarkConfigurationError(
+                f"Resume report {field} does not match the current benchmark."
+            )
+    case_hashes = {tc.id: tc.case_hash for tc in test_cases}
+    for result in source_results:
+        if result.metadata.get("case_hash") != case_hashes[result.case_id]:
+            raise BenchmarkConfigurationError(
+                f"Resume report case hash is stale for {result.case_id}."
+            )
+
+    reusable = {
+        key: result for key, result in source_by_key.items() if not result.error_message
+    }
+    prior_errors = [result for result in source_results if result.error_message]
+    resume_metadata = {
+        "resumed_from_path": str(source_path),
+        "resumed_from_run_id": source_metadata.get("run_id", "unknown"),
+        "resume_root_run_id": source_metadata.get(
+            "resume_root_run_id", source_metadata.get("run_id", "unknown")
+        ),
+        "resume_chain_depth": source_metadata.get("resume_chain_depth", 0) + 1,
+        "reused_result_count": len(reusable),
+        "rerun_result_count": len(prior_errors),
+        "prior_cli_error_attempt_count": (
+            source_metadata.get("prior_cli_error_attempt_count", 0)
+            + len(prior_errors)
+        ),
+        "prior_cli_error_attempt_cost_usd": round(
+            source_metadata.get("prior_cli_error_attempt_cost_usd", 0.0)
+            + sum(result.token_usage.estimated_cost_usd for result in prior_errors),
+            6,
+        ),
+    }
+    return reusable, resume_metadata
+
+
 def run_benchmark(
     clis: List[str],
     models: List[str],
@@ -475,6 +564,7 @@ def run_benchmark(
     dry_run: bool = False,
     publish: bool = False,
     private_tests_dir: Optional[str] = None,
+    resume_from: Optional[str] = None,
 ) -> List[BenchmarkResult]:
     config = load_config()
     test_cases = load_test_cases(categories, case_ids, private_tests_dir)
@@ -482,6 +572,10 @@ def run_benchmark(
     if publish and (categories or case_ids):
         raise BenchmarkConfigurationError(
             "Refusing to publish a filtered run. Remove --category/--case."
+        )
+    if dry_run and resume_from:
+        raise BenchmarkConfigurationError(
+            "--resume-from cannot be combined with --dry-run."
         )
 
     if not test_cases:
@@ -534,6 +628,18 @@ def run_benchmark(
     results: List[BenchmarkResult] = []
     runners_cache: Dict[str, Any] = {}
     run_metadata = _run_metadata(test_cases, execution_plan)
+    reusable_results: Dict[
+        Tuple[str, str, Optional[str], str], BenchmarkResult
+    ] = {}
+    if resume_from:
+        reusable_results, resume_metadata = _load_resume_results(
+            resume_from, test_cases, execution_plan, run_metadata
+        )
+        run_metadata.update(resume_metadata)
+        print(
+            f"• Resume: reusing {len(reusable_results)} result(s), rerunning "
+            f"{resume_metadata['rerun_result_count']} CLI error(s)."
+        )
 
     def metadata_for(tc: TestCase) -> Dict[str, Any]:
         return {
@@ -559,6 +665,19 @@ def run_benchmark(
 
         for idx, tc in enumerate(test_cases, 1):
             print(f"[{idx}/{len(test_cases)}] Running: {tc.title} ({tc.id})... ", end="", flush=True)
+
+            result_key = _result_key(cli_name, model, model_effort, tc.id)
+            if result_key in reusable_results:
+                reused = reusable_results[result_key]
+                origin_run_id = reused.metadata.get("run_id", "unknown")
+                reused.metadata = {
+                    **metadata_for(tc),
+                    "result_origin_run_id": origin_run_id,
+                    "result_reused": True,
+                }
+                results.append(reused)
+                print("♻️ REUSED")
+                continue
 
             if tc.evaluator_type not in SUPPORTED_EVALUATORS:
                 eval_logs = f"Unknown evaluator type: {tc.evaluator_type}"
@@ -785,6 +904,11 @@ def main():
         default=None,
         help="Optional directory containing private <case_id>.py overrides",
     )
+    parser.add_argument(
+        "--resume-from",
+        default=None,
+        help="Reuse scored results from a compatible JSON report and rerun only CLI errors",
+    )
 
     args = parser.parse_args()
 
@@ -804,6 +928,7 @@ def main():
         dry_run=args.dry_run,
         publish=args.publish,
         private_tests_dir=args.private_tests_dir,
+        resume_from=args.resume_from,
     )
 
 

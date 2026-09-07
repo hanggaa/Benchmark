@@ -153,6 +153,24 @@ class MarkdownReporter:
                 )
                 md.append(f"- CLI versions: `{versions}`")
             md.append(f"- Config hash: `{metadata.get('config_hash', 'unknown')}`")
+            if metadata.get("resumed_from_run_id"):
+                md.append(
+                    f"- Resumed from run ID: `{metadata['resumed_from_run_id']}`"
+                )
+                md.append(
+                    f"- Resume root run ID: `{metadata.get('resume_root_run_id', 'unknown')}`"
+                )
+                md.append(
+                    "- Resume results: `"
+                    f"{metadata.get('reused_result_count', 0)} reused, "
+                    f"{metadata.get('rerun_result_count', 0)} rerun`"
+                )
+                md.append(
+                    "- Prior CLI-error attempts: `"
+                    f"{metadata.get('prior_cli_error_attempt_count', 0)}` "
+                    "(cost excluded from merged leaderboard: "
+                    f"`${metadata.get('prior_cli_error_attempt_cost_usd', 0.0):.5f}`)"
+                )
             pricing_metadata = metadata.get("pricing_metadata", {})
             if isinstance(pricing_metadata, dict):
                 md.append(

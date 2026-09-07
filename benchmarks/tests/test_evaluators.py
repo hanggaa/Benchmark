@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import tempfile
 import unittest
@@ -15,9 +16,10 @@ from benchmarks.evaluators.evaluators import (
     WorkspacePatchEvaluator,
     extract_python_code,
 )
-from benchmarks.models import TestCase, TokenUsage
+from benchmarks.models import BenchmarkResult, TestCase, TokenUsage
 from benchmarks.runner import (
     BenchmarkConfigurationError,
+    _run_metadata,
     hash_workspace_fixture,
     load_test_cases,
     parse_model_spec,
@@ -389,6 +391,93 @@ class NewCaseLoadingTests(unittest.TestCase):
         self.assertFalse(kwargs["workspace_mode"])
         self.assertNotEqual(Path(kwargs["cwd"]), Path.cwd())
         self.assertFalse(Path(kwargs["cwd"]).exists())
+
+    def test_resume_reuses_scored_result_and_reruns_only_cli_error(self) -> None:
+        cases = [
+            TestCase(
+                id="case_1",
+                title="Case 1",
+                category="logic",
+                description="",
+                prompt="solve one",
+                evaluator_type="python_unit_test",
+                test_code="assert True",
+                case_hash="hash-1",
+            ),
+            TestCase(
+                id="case_2",
+                title="Case 2",
+                category="logic",
+                description="",
+                prompt="solve two",
+                evaluator_type="python_unit_test",
+                test_code="assert True",
+                case_hash="hash-2",
+            ),
+        ]
+        plan = [("codex", "gpt-test", None)]
+        metadata = _run_metadata(cases, plan)
+        source_results = [
+            BenchmarkResult(
+                case_id="case_1",
+                case_title="Case 1",
+                category="logic",
+                model="gpt-test",
+                cli="codex",
+                passed=True,
+                duration_seconds=1.0,
+                token_usage=TokenUsage(),
+                raw_response="previous answer",
+                metadata={**metadata, "case_hash": "hash-1"},
+            ),
+            BenchmarkResult(
+                case_id="case_2",
+                case_title="Case 2",
+                category="logic",
+                model="gpt-test",
+                cli="codex",
+                passed=False,
+                duration_seconds=1.0,
+                token_usage=TokenUsage(estimated_cost_usd=0.25),
+                error_message="temporary CLI error",
+                metadata={**metadata, "case_hash": "hash-2"},
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            resume_file = Path(output_dir) / "resume.json"
+            resume_file.write_text(
+                json.dumps([result.to_dict() for result in source_results]),
+                encoding="utf-8",
+            )
+            with patch("benchmarks.runner.load_test_cases", return_value=cases):
+                with patch("benchmarks.runner.get_runner") as get_runner:
+                    get_runner.return_value.run_prompt.return_value = (
+                        "new answer",
+                        TokenUsage(),
+                        0.1,
+                        None,
+                    )
+                    with patch(
+                        "benchmarks.runner.UnitTestEvaluator.evaluate",
+                        return_value=(True, "ok"),
+                    ):
+                        with redirect_stdout(StringIO()):
+                            results = run_benchmark(
+                                ["codex"],
+                                ["gpt-test"],
+                                output_dir=output_dir,
+                                resume_from=str(resume_file),
+                            )
+
+        self.assertEqual(get_runner.return_value.run_prompt.call_count, 1)
+        self.assertEqual([result.raw_response for result in results], [
+            "previous answer",
+            "new answer",
+        ])
+        self.assertTrue(results[0].metadata["result_reused"])
+        self.assertEqual(results[0].metadata["reused_result_count"], 1)
+        self.assertEqual(results[0].metadata["prior_cli_error_attempt_cost_usd"], 0.25)
 
     def test_publish_rejects_filtered_runs_before_model_calls(self) -> None:
         with self.assertRaises(BenchmarkConfigurationError):

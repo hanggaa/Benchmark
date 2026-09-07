@@ -196,6 +196,25 @@ python3 -m benchmarks.runner \
 `--publish` menolak kombinasi `--category` atau `--case`, serta run yang tidak
 menghasilkan jumlah result yang lengkap.
 
+Jika full run berhenti saat publish karena CLI/infrastruktur error, lanjutkan
+dari report JSON yang disebutkan oleh run tersebut. Runner akan memvalidasi
+suite, config, case hash, model, dan CLI; hasil yang sudah dinilai dipakai ulang,
+sedangkan hanya CLI error yang dijalankan kembali:
+
+```bash
+python3 -m benchmarks.runner \
+  --models "Gemini 3.8 Flash (High), Gemini 3.7 Flash (High), Gemini 3.6 Flash (High), Gemini 3.1 Pro (High)" \
+  --timeout 600 \
+  --resume-from benchmarks/reports/benchmark_data_20260907_045613_490019.json \
+  --publish
+```
+
+Report gabungan mencatat run asal, jumlah result yang dipakai ulang, dan biaya
+percobaan CLI error sebelumnya. Biaya error lama dilaporkan sebagai provenance,
+tetapi tidak dimasukkan kembali ke leaderboard gabungan.
+Jika masih ada CLI error, ulangi perintah dengan report JSON terbaru; riwayat
+jumlah dan biaya error akan tetap terakumulasi sepanjang rantai resume.
+
 Token dinormalisasi sebelum biaya dihitung: `input_tokens` tidak mencakup
 `cache_read_tokens`, dan `output_tokens` tidak mencakup `thinking_tokens` jika
 adapter asal melaporkannya sebagai subset. Nama sumber dan status kelengkapan

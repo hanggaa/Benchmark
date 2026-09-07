@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -72,6 +74,43 @@ class AgenticRunnerSafetyTests(unittest.TestCase):
         self.assertEqual(response, "")
         self.assertEqual(usage.output_tokens, 10)
         self.assertIn("without a final text response", error)
+
+    def test_antigravity_recovers_single_response_artifact(self) -> None:
+        stdout = (
+            '{"response":"","usage":{"input_tokens":100,'
+            '"output_tokens":20,"thinking_tokens":10}}'
+        )
+        with tempfile.TemporaryDirectory() as workspace:
+            def write_artifact(*args, **kwargs):
+                Path(workspace, "solution.py").write_text(
+                    "def answer():\n    return 42\n", encoding="utf-8"
+                )
+                return self._completed(stdout)
+
+            with patch(
+                "benchmarks.runners.antigravity_runner.subprocess.run",
+                side_effect=write_artifact,
+            ) as run:
+                response, _, _, error = AntigravityRunner({}).run_prompt(
+                    "solve", "gemini-test", cwd=workspace, workspace_mode=False
+                )
+        self.assertIsNone(error)
+        self.assertIn("return 42", response)
+        command = run.call_args.args[0]
+        mode_index = command.index("--mode")
+        self.assertEqual(command[mode_index + 1], "accept-edits")
+
+    def test_antigravity_surfaces_json_error_status(self) -> None:
+        stdout = '{"status":"ERROR","response":"","error":"network unavailable"}'
+        with patch(
+            "benchmarks.runners.antigravity_runner.subprocess.run",
+            return_value=self._completed(stdout),
+        ):
+            response, _, _, error = AntigravityRunner({}).run_prompt(
+                "solve", "gemini-test", cwd="/tmp/prompt", workspace_mode=False
+            )
+        self.assertEqual(response, "")
+        self.assertEqual(error, "network unavailable")
 
     def test_antigravity_surfaces_headless_permission_soft_denial(self) -> None:
         stdout = (

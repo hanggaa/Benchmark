@@ -72,6 +72,22 @@ class BenchmarkResult:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BenchmarkResult":
+        """Rehydrate a result produced by :class:`JSONReporter`."""
+        payload = dict(data)
+        usage = payload.get("token_usage", {})
+        if not isinstance(usage, dict):
+            raise ValueError("token_usage must be an object")
+        allowed_usage = TokenUsage.__dataclass_fields__
+        payload["token_usage"] = TokenUsage(
+            **{key: value for key, value in usage.items() if key in allowed_usage}
+        )
+        allowed_result = cls.__dataclass_fields__
+        return cls(
+            **{key: value for key, value in payload.items() if key in allowed_result}
+        )
+
 
 @dataclass
 class ModelSummary:

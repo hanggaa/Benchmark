@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from benchmarks.models import TokenUsage
@@ -15,6 +16,79 @@ logger = logging.getLogger(__name__)
 
 class AntigravityRunner(BaseRunner):
     """Runner for Antigravity CLI (agy)."""
+
+    _RESPONSE_ARTIFACT_SUFFIXES = {
+        ".c",
+        ".cpp",
+        ".go",
+        ".java",
+        ".js",
+        ".json",
+        ".jsx",
+        ".md",
+        ".py",
+        ".rs",
+        ".sh",
+        ".ts",
+        ".tsx",
+        ".txt",
+        ".yaml",
+        ".yml",
+    }
+
+    @staticmethod
+    def _workspace_files(cwd: Optional[str]) -> set[str]:
+        """Return safe regular files relative to an isolated prompt workspace."""
+        if not cwd:
+            return set()
+        root = Path(cwd)
+        if not root.is_dir():
+            return set()
+        files: set[str] = set()
+        for path in root.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            files.add(path.relative_to(root).as_posix())
+        return files
+
+    @classmethod
+    def _recover_response_artifact(
+        cls, cwd: Optional[str], files_before: set[str]
+    ) -> Optional[str]:
+        """Recover a single text artifact when AGY omits its final response."""
+        if not cwd:
+            return None
+        root = Path(cwd).resolve()
+        if not root.is_dir():
+            return None
+
+        candidates: list[Path] = []
+        for path in root.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            relative = path.relative_to(root).as_posix()
+            hidden = any(
+                part.startswith(".") for part in path.relative_to(root).parts
+            )
+            if relative in files_before or hidden:
+                continue
+            if path.suffix.lower() not in cls._RESPONSE_ARTIFACT_SUFFIXES:
+                continue
+            try:
+                if path.stat().st_size > 2_000_000:
+                    continue
+                path.resolve().relative_to(root)
+            except (OSError, ValueError):
+                continue
+            candidates.append(path)
+
+        if len(candidates) != 1:
+            return None
+        try:
+            content = candidates[0].read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return None
+        return content if content.strip() else None
 
     @staticmethod
     def _permission_denial(stderr: str) -> Optional[str]:
@@ -48,6 +122,9 @@ class AntigravityRunner(BaseRunner):
         cwd: Optional[str] = None,
         workspace_mode: bool = False,
     ) -> Tuple[str, TokenUsage, float, Optional[str]]:
+        files_before = (
+            self._workspace_files(cwd) if not workspace_mode else set()
+        )
         cmd = [
             "agy",
             "-p",
@@ -61,7 +138,10 @@ class AntigravityRunner(BaseRunner):
         cmd.extend([
             "--sandbox",
             "--mode",
-            "accept-edits" if workspace_mode else "plan",
+            # Response-only cases already run in a disposable empty directory.
+            # Allowing edits there prevents AGY's file tool from being denied;
+            # the resulting single artifact can then be evaluated as its answer.
+            "accept-edits",
             "--disable-slash-commands",
         ])
 
@@ -122,6 +202,16 @@ class AntigravityRunner(BaseRunner):
                 )
                 token_usage.calculate_cost(pricing)
 
+                agy_error = data.get("error")
+                agy_status = str(data.get("status", "")).upper()
+                if agy_error or agy_status == "ERROR":
+                    return (
+                        "",
+                        token_usage,
+                        duration,
+                        str(agy_error or "AGY reported an error status."),
+                    )
+
                 permission_error = self._permission_denial(stderr)
                 if permission_error:
                     return "", token_usage, duration, permission_error
@@ -134,6 +224,12 @@ class AntigravityRunner(BaseRunner):
                         "AGY JSON response field was not text.",
                     )
                 if not workspace_mode and not response_text.strip():
+                    artifact = self._recover_response_artifact(cwd, files_before)
+                    if artifact is not None:
+                        logger.warning(
+                            "AGY omitted final text; recovered its single prompt-workspace artifact."
+                        )
+                        return artifact, token_usage, duration, None
                     return (
                         "",
                         token_usage,
