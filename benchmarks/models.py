@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -76,9 +77,22 @@ class BenchmarkResult:
     def from_dict(cls, data: Dict[str, Any]) -> "BenchmarkResult":
         """Rehydrate a result produced by :class:`JSONReporter`."""
         payload = dict(data)
+        for key in ('case_id', 'case_title', 'category', 'model', 'cli'):
+            if not isinstance(payload.get(key), str) or not payload[key]:
+                raise ValueError(f'{key} must be a non-empty string')
+        if not isinstance(payload.get('passed'), bool):
+            raise ValueError('passed must be boolean')
+        if not isinstance(payload.get('metadata', {}), dict):
+            raise ValueError('metadata must be an object')
         usage = payload.get("token_usage", {})
         if not isinstance(usage, dict):
             raise ValueError("token_usage must be an object")
+        for key, value in usage.items():
+            if key.endswith('_tokens') and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+                raise ValueError(f'Invalid token count: {key}')
+        for value in (payload.get('duration_seconds'), usage.get('estimated_cost_usd', 0)):
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value < 0:
+                raise ValueError('Duration and cost must be finite and non-negative')
         allowed_usage = TokenUsage.__dataclass_fields__
         payload["token_usage"] = TokenUsage(
             **{key: value for key, value in usage.items() if key in allowed_usage}

@@ -4,6 +4,7 @@ import abc
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from benchmarks.models import TokenUsage
@@ -44,18 +45,36 @@ class BaseRunner(abc.ABC):
         char_tokens = max(len(prompt) // 4, 500)
         return char_tokens + 15000
 
+    @staticmethod
+    def normalize_model(model: str) -> str:
+        model = re.sub(r'\s*\((?:low|medium|high|xhigh|max|ultra)\)\s*$', '', model, flags=re.I)
+        return re.sub(r'[^a-z0-9]+', '-', model.lower()).strip('-')
+
+    def pricing_provenance(self, model: str) -> Dict[str, Any]:
+        name = self.normalize_model(model)
+        matches = [key for key in self.pricing_table if key != 'default' and (
+            name == self.normalize_model(key) or name.startswith(self.normalize_model(key) + '-')
+        )]
+        key = max(matches, key=lambda item: len(self.normalize_model(item))) if matches else None
+        info = dict(self.config.get('model_pricing_metadata', {}).get(key, {}))
+        verified = bool(key and info.get('last_verified_utc') and info.get('source'))
+        today = datetime.now(timezone.utc).date().isoformat()
+        rates = self.pricing_table.get(key, {})
+        if info.get('valid_through') and today > info['valid_through']:
+            rates = info.get('next_rates', rates)
+            if not info.get('next_rates'):
+                verified = False
+        return {**info, 'key': key, 'verified': verified, 'rates': rates}
+
     def get_pricing(self, model: str) -> Dict[str, float]:
         """
         Smart pricing lookup with Automatic Tier Inference.
         If a new model (like Gemini 4.0 Pro or o4-mini) is released, it automatically
         infers the pricing tier without requiring manual config.json edits.
         """
-        model_clean = model.lower().replace(" ", "-").replace(".", "-").replace(":", "-")
-
-        # 1. Exact or partial match in custom config table
-        for key, price in self.pricing_table.items():
-            if key in model_clean or model_clean in key:
-                return price
+        provenance = self.pricing_provenance(model)
+        if provenance['key']:
+            return provenance['rates']
 
         # 2. Smart Tier Inference (Zero-Config for New Models)
         m = model.lower()

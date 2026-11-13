@@ -98,7 +98,9 @@ class MarkdownReporter:
                     / (total_cost + timeout_penalty + 0.005),
                     1,
                 )
-                if telemetry_complete and total > 0
+                if telemetry_complete and total > 0 and all(
+                    item.metadata.get('pricing', {}).get('verified', True) for item in items
+                )
                 else None
             )
 
@@ -136,6 +138,8 @@ class MarkdownReporter:
             f"**{total_scored}** scored run(s), **{total_cli_errors}** CLI error(s)."
         )
         md.append("")
+        md.append('Costs are estimated API-equivalent USD; excludes subscription quota weighting, storage, and tool fees.')
+        md.append('')
         metadata = results[0].metadata
         if metadata:
             md.append("## Run Provenance")
@@ -202,7 +206,7 @@ class MarkdownReporter:
                 else (
                     "N/A (no scored runs)"
                     if not s.total_cases
-                    else "N/A (telemetry incomplete)"
+                    else "N/A (telemetry incomplete)" if not s.telemetry_complete else "N/A (pricing unverified)"
                 )
             )
             md.append(
@@ -210,6 +214,13 @@ class MarkdownReporter:
                 f"{weighted_str} | {cli_errors} | {s.avg_duration_seconds}s | "
                 f"{s.total_thinking_tokens:,} | {cost_str} | {efficiency_str} |"
             )
+
+        if any(not r.token_usage.telemetry_complete for r in results):
+            md.append('\nCost totals are partial: some attempts have incomplete token telemetry.')
+        if any(not r.metadata.get('pricing', {}).get('verified', True) for r in results):
+            md.append('\nEfficiency is N/A where pricing is unverified or inferred.')
+        if results[0].metadata.get('timeout_limits'):
+            md.append(f"\nPer-case timeout limits (seconds): `{results[0].metadata['timeout_limits']}`")
 
         # Category Breakdown
         categories = sorted(list(set(r.category for r in results)))

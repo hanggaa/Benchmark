@@ -45,7 +45,7 @@ class AgenticRunnerSafetyTests(unittest.TestCase):
 
     def test_antigravity_uses_native_sandbox_for_fixture(self) -> None:
         with patch(
-            "benchmarks.runners.antigravity_runner.subprocess.run",
+            "benchmarks.runners.antigravity_runner.execute_agy",
             return_value=self._completed(),
         ) as run:
             AntigravityRunner({}).run_prompt(
@@ -65,7 +65,7 @@ class AgenticRunnerSafetyTests(unittest.TestCase):
             '"output_tokens":20,"thinking_tokens":10}}'
         )
         with patch(
-            "benchmarks.runners.antigravity_runner.subprocess.run",
+            "benchmarks.runners.antigravity_runner.execute_agy",
             return_value=self._completed(stdout),
         ):
             response, usage, _, error = AntigravityRunner({}).run_prompt(
@@ -88,7 +88,7 @@ class AgenticRunnerSafetyTests(unittest.TestCase):
                 return self._completed(stdout)
 
             with patch(
-                "benchmarks.runners.antigravity_runner.subprocess.run",
+                "benchmarks.runners.antigravity_runner.execute_agy",
                 side_effect=write_artifact,
             ) as run:
                 response, _, _, error = AntigravityRunner({}).run_prompt(
@@ -103,7 +103,7 @@ class AgenticRunnerSafetyTests(unittest.TestCase):
     def test_antigravity_surfaces_json_error_status(self) -> None:
         stdout = '{"status":"ERROR","response":"","error":"network unavailable"}'
         with patch(
-            "benchmarks.runners.antigravity_runner.subprocess.run",
+            "benchmarks.runners.antigravity_runner.execute_agy",
             return_value=self._completed(stdout),
         ):
             response, _, _, error = AntigravityRunner({}).run_prompt(
@@ -122,7 +122,7 @@ class AgenticRunnerSafetyTests(unittest.TestCase):
             "user denied permission to run command: pytest]"
         )
         with patch(
-            "benchmarks.runners.antigravity_runner.subprocess.run",
+            "benchmarks.runners.antigravity_runner.execute_agy",
             return_value=self._completed(stdout, stderr),
         ):
             response, usage, _, error = AntigravityRunner({}).run_prompt(

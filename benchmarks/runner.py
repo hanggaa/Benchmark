@@ -281,6 +281,12 @@ def load_test_cases(
             "Invalid benchmark case configuration:\n- " + "\n- ".join(errors)
         )
 
+    if case_ids and set(case_ids) - {tc.id for tc in test_cases}:
+        raise BenchmarkConfigurationError('Unknown case IDs in filter.')
+    if categories:
+        known = {json.loads(path.read_text())['category'] for path in case_files}
+        if set(categories) - known:
+            raise BenchmarkConfigurationError('Unknown category filter.')
     return test_cases
 
 
@@ -362,14 +368,29 @@ def parse_model_spec(raw_spec: str, global_effort: Optional[str] = None, default
     effort_match = re.match(r"^(.*):(low|medium|high|max|xhigh|ultra)$", spec, re.I)
     if effort_match:
         spec = effort_match.group(1).strip()
+        if effort and effort.lower() != effort_match.group(2).lower():
+            raise BenchmarkConfigurationError('Conflicting reasoning effort options.')
         effort = effort_match.group(2).lower()
 
     # Check for embedded --effort in string
     if " --effort " in spec:
         m_parts = spec.split(" --effort ")
         spec = m_parts[0].strip()
+        if effort and effort.lower() != m_parts[1].strip().lower():
+            raise BenchmarkConfigurationError('Conflicting reasoning effort options.')
         effort = m_parts[1].strip()
 
+    label = re.search(r'\((low|medium|high|xhigh|max|ultra)\)$', spec, re.I)
+    if label and effort and label.group(1).lower() != effort.lower():
+        raise BenchmarkConfigurationError('Conflicting model label and reasoning effort.')
+    if effort and effort.lower() not in {'low', 'medium', 'high', 'xhigh', 'max', 'ultra'}:
+        raise BenchmarkConfigurationError(f'Invalid reasoning effort: {effort}')
+    if not spec:
+        raise BenchmarkConfigurationError('Model must not be empty.')
+    if effort:
+        effort = effort.lower()
+    elif label:
+        effort = label.group(1).lower()
     # Check for (High), (Medium), (Low) in model name
     if not effort:
         if "(High)" in spec or "(high)" in spec:
@@ -444,6 +465,16 @@ def _run_metadata(
         f"{case.id}:{case.case_hash}" for case in sorted(test_cases, key=lambda c: c.id)
     )
     return {
+        'format_version': 2,
+        'harness_hash': hashlib.sha256(b''.join(
+            path.read_bytes() for path in sorted(Path(__file__).parent.rglob('*.py'))
+            if not {'tests', 'fixtures', '__pycache__'} & set(path.parts)
+        )).hexdigest(),
+        'timeout_limits': {tc.id: tc.timeout_seconds for tc in test_cases},
+        'pricing_snapshot': {
+            model: AntigravityRunner(config).get_pricing(model)
+            for _, model, _ in execution_plan
+        },
         "run_id": str(uuid.uuid4()),
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "suite_hash": hashlib.sha256(suite_material.encode("utf-8")).hexdigest(),
@@ -484,7 +515,13 @@ def _load_resume_results(
         raise BenchmarkConfigurationError(
             f"Cannot read resume report '{source_path}': {exc}"
         ) from exc
-    if not isinstance(raw_results, list) or not raw_results:
+    checkpoint = raw_results if isinstance(raw_results, dict) else None
+    if checkpoint is not None:
+        raw_results = checkpoint.get('results')
+        if checkpoint.get('expected_keys') != [list(_result_key(cli, model, effort, tc.id))
+                for cli, model, effort in execution_plan for tc in test_cases]:
+            raise BenchmarkConfigurationError('Checkpoint execution plan does not match.')
+    if not isinstance(raw_results, list) or (not raw_results and checkpoint is None):
         raise BenchmarkConfigurationError(
             "Resume report must be a non-empty JSON result list."
         )
@@ -507,21 +544,32 @@ def _load_resume_results(
                 f"Resume report contains duplicate result: {key}."
             )
         source_by_key[key] = result
-    if set(source_by_key) != expected_keys:
+    if not set(source_by_key).issubset(expected_keys) or (checkpoint is None and set(source_by_key) != expected_keys):
         raise BenchmarkConfigurationError(
             "Resume report does not contain exactly the requested models and cases."
         )
 
-    source_metadata = source_results[0].metadata
+    source_metadata = checkpoint.get('metadata', {}) if checkpoint else source_results[0].metadata
     if not isinstance(source_metadata, dict):
         raise BenchmarkConfigurationError("Resume report metadata must be an object.")
-    for field in ("suite_hash", "config_hash"):
+    compatibility_fields = (
+        'format_version', 'suite_hash', 'config_hash', 'harness_hash',
+        'cli_versions', 'timeout_limits', 'pricing_snapshot', 'python_version', 'platform',
+    )
+    for field in compatibility_fields:
+        if field not in source_metadata:
+            raise BenchmarkConfigurationError(f'Resume report lacks {field}; start a new run.')
         if source_metadata.get(field) != run_metadata.get(field):
             raise BenchmarkConfigurationError(
                 f"Resume report {field} does not match the current benchmark."
             )
     case_hashes = {tc.id: tc.case_hash for tc in test_cases}
     for result in source_results:
+        if not isinstance(result.metadata, dict) or any(
+            result.metadata.get(field) != source_metadata.get(field)
+            for field in compatibility_fields
+        ):
+            raise BenchmarkConfigurationError('Resume results have inconsistent provenance.')
         if result.metadata.get("case_hash") != case_hashes[result.case_id]:
             raise BenchmarkConfigurationError(
                 f"Resume report case hash is stale for {result.case_id}."
@@ -539,7 +587,7 @@ def _load_resume_results(
         ),
         "resume_chain_depth": source_metadata.get("resume_chain_depth", 0) + 1,
         "reused_result_count": len(reusable),
-        "rerun_result_count": len(prior_errors),
+        "rerun_result_count": len(expected_keys) - len(reusable),
         "prior_cli_error_attempt_count": (
             source_metadata.get("prior_cli_error_attempt_count", 0)
             + len(prior_errors)
@@ -566,6 +614,10 @@ def run_benchmark(
     private_tests_dir: Optional[str] = None,
     resume_from: Optional[str] = None,
 ) -> List[BenchmarkResult]:
+    if not models or any(not model.strip() for model in models):
+        raise BenchmarkConfigurationError('At least one non-empty model is required.')
+    if timeout_override is not None and (not isinstance(timeout_override, int) or isinstance(timeout_override, bool) or timeout_override <= 0):
+        raise BenchmarkConfigurationError('Timeout must be a positive integer.')
     config = load_config()
     test_cases = load_test_cases(categories, case_ids, private_tests_dir)
 
@@ -600,6 +652,13 @@ def run_benchmark(
                 
         execution_plan.append((c_cli, c_model, c_effort))
 
+    if len(set(execution_plan)) != len(execution_plan):
+        raise BenchmarkConfigurationError('Duplicate model configuration in execution plan.')
+    for cli, _, _ in execution_plan:
+        try:
+            get_runner(cli, config)
+        except ValueError as exc:
+            raise BenchmarkConfigurationError(str(exc)) from exc
     print("=" * 70)
     print(f"🚀 STARTING LLM BENCHMARK SUITE")
     print(f"• Execution Plan ({len(execution_plan)} target models):")
@@ -628,6 +687,7 @@ def run_benchmark(
     results: List[BenchmarkResult] = []
     runners_cache: Dict[str, Any] = {}
     run_metadata = _run_metadata(test_cases, execution_plan)
+    run_metadata['timeout_limits'] = {tc.id: timeout_override or tc.timeout_seconds for tc in test_cases}
     reusable_results: Dict[
         Tuple[str, str, Optional[str], str], BenchmarkResult
     ] = {}
@@ -641,6 +701,38 @@ def run_benchmark(
             f"{resume_metadata['rerun_result_count']} CLI error(s)."
         )
 
+    out_path = Path(output_dir) if output_dir else Path(__file__).parent / 'reports'
+    out_path.mkdir(parents=True, exist_ok=True)
+    checkpoint_file = out_path / f"benchmark_checkpoint_{run_metadata['run_id']}.json"
+
+    def save_checkpoint() -> None:
+        saved = dict(reusable_results)
+        saved.update({_result_key(r.cli, r.model, r.effort, r.case_id): r for r in results})
+        atomic_write_text(checkpoint_file, json.dumps({
+            'metadata': run_metadata,
+            'expected_keys': [list(_result_key(cli, model, effort, tc.id))
+                              for cli, model, effort in execution_plan for tc in test_cases],
+            'results': [result.to_dict() for result in saved.values()],
+        }, indent=2))
+
+    class CheckpointResults(list):
+        def append(self, result: BenchmarkResult) -> None:
+            pricing_runner = AntigravityRunner(config)
+            result.metadata['pricing'] = {
+                **pricing_runner.pricing_provenance(result.model),
+                'rates': pricing_runner.get_pricing(result.model),
+            }
+            result.metadata['error_kind'] = (
+                'timeout' if result.error_message and 'timeout' in result.error_message.lower()
+                else 'cli_error' if result.error_message else 'assertion_failure' if not result.passed else None
+            )
+            super().append(result)
+            save_checkpoint()
+
+    results = CheckpointResults()
+    save_checkpoint()
+    print(f'📄 Checkpoint: {checkpoint_file}')
+
     def metadata_for(tc: TestCase) -> Dict[str, Any]:
         return {
             **run_metadata,
@@ -648,6 +740,7 @@ def run_benchmark(
             "fixture_hash": tc.fixture_hash or None,
             "case_source": tc.source_path,
             "test_source": tc.test_source,
+            'effective_timeout_seconds': timeout_override or tc.timeout_seconds,
         }
 
     for cli_name, model, model_effort in execution_plan:
@@ -669,9 +762,12 @@ def run_benchmark(
             result_key = _result_key(cli_name, model, model_effort, tc.id)
             if result_key in reusable_results:
                 reused = reusable_results[result_key]
-                origin_run_id = reused.metadata.get("run_id", "unknown")
+                original_metadata = reused.metadata.copy()
+                origin_run_id = reused.metadata.get('result_origin_run_id', reused.metadata.get("run_id", "unknown"))
                 reused.metadata = {
+                    **original_metadata,
                     **metadata_for(tc),
+                    'origin_metadata': original_metadata.get('origin_metadata', original_metadata),
                     "result_origin_run_id": origin_run_id,
                     "result_reused": True,
                 }
@@ -849,6 +945,9 @@ def run_benchmark(
     json_file = out_path / f"benchmark_data_{timestamp}.json"
     JSONReporter.save_report(results, json_file)
 
+    print(f'📄 Markdown report: {md_file}')
+    print(f'📄 JSON report: {json_file}')
+
     if publish:
         expected_results = len(test_cases) * len(execution_plan)
         if len(results) != expected_results:
@@ -859,7 +958,7 @@ def run_benchmark(
         cli_errors = [result for result in results if result.error_message]
         if cli_errors:
             examples = ", ".join(
-                f"{result.model}/{result.case_id}" for result in cli_errors[:3]
+                f"{result.model}/{result.case_id}" for result in cli_errors
             )
             raise BenchmarkConfigurationError(
                 "Refusing to publish a run containing "
@@ -933,4 +1032,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BenchmarkConfigurationError as exc:
+        print(f'Benchmark configuration error: {exc}', file=sys.stderr)
+        raise SystemExit(2)

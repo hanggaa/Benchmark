@@ -11,7 +11,29 @@
     },
     "note": "Excludes batch/flex/priority/fast tiers, long-context uplifts, cache writes/storage, regional uplifts, and tool-call fees. Gemini 3.8/3.7/3.6 promotional standard rates are valid through 2026-12-31. Retired Claude 3.x entries are retained for historical comparisons. The default row is an unverified fallback, not a provider price."
   },
+  "model_pricing_metadata": {
+    "gemini-4-argon": {
+      "source": "https://aistudio.google.com/docs/pricing#gemini-4-argon",
+      "last_verified_utc": "2026-11-04",
+      "valid_through": "2026-11-30",
+      "basis": "Standard paid text API equivalent, USD per 1M tokens; implicit cache only; excludes tool fees and subscription quota weighting.",
+      "next_rates": {"input": 4.0, "output": 20.0, "thinking": 20.0, "cache_read": 0.20}
+    },
+    "gemini-3.8-flash": {
+      "source": "https://aistudio.google.com/docs/pricing#gemini-3.8-flash",
+      "last_verified_utc": "2026-11-04",
+      "valid_through": "2026-12-31",
+      "basis": "Standard paid text API equivalent, USD per 1M tokens; excludes cache storage and tool fees.",
+      "next_rates": {"input": 1.50, "output": 7.50, "thinking": 7.50, "cache_read": 0.15}
+    }
+  },
   "pricing_per_1m_tokens": {
+    "gemini-4-argon": {
+      "input": 2.00,
+      "output": 10.00,
+      "thinking": 10.00,
+      "cache_read": 0.10
+    },
     "gemini-3.8-flash": {
       "input": 0.75,
       "output": 3.75,

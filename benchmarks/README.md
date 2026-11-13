@@ -88,6 +88,32 @@ python3 -m benchmarks.runner \
 
 ## 🚀 Panduan Eksekusi Benchmark
 
+### Gemini 4 Argon (High)
+
+Gunakan nama tampilan AGY `Gemini 4 Argon (High)`; effort `high` otomatis
+dicatat. Label model dan flag effort yang bertentangan ditolak sebelum eksekusi.
+Verifikasi routing tanpa token dengan:
+
+```bash
+python3 -m benchmarks.runner --models "Gemini 4 Argon (High), Gemini 3.8 Flash (High)" --timeout 1200 --dry-run
+```
+
+Untuk benchmark nyata, ganti `--dry-run` dengan `--publish`. Error jaringan,
+provider, dan batas waktu tetap mungkin terjadi. Setiap kasus selesai langsung
+disimpan ke `benchmark_checkpoint_<run_id>.json`; lokasinya dicetak sejak awal.
+Lanjutkan dengan model dan timeout yang sama serta
+`--resume-from benchmarks/reports/benchmark_checkpoint_<run_id>.json`.
+Checkpoint parsial memakai object berisi `metadata`, `expected_keys`, dan
+`results`; laporan final tetap memakai list JSON untuk kompatibilitas dashboard.
+Resume mengulang error eksekusi dan kasus yang belum selesai, bukan FAIL assertion.
+Format v2 memeriksa seluruh provenance, versi CLI, hash harness, dan batas waktu;
+laporan lama tanpa informasi tersebut harus dimulai sebagai run baru.
+
+Biaya adalah estimasi ekuivalen API, bukan tagihan/kuota langganan AGY. Tarif
+Argon dan Flash memiliki metadata verifikasi per model dan tarif lanjutan sesuai
+periode resmi. Tarif fallback tetap ditandai tidak terverifikasi. Usage yang
+hilang/parsial tidak diperkirakan sebagai biaya aktual dan efisiensinya N/A.
+
 ### 1. Dry Run (Melihat Execution Plan & Daftar Soal Tanpa Menghabiskan Token)
 Gunakan flag `--dry-run` untuk memverifikasi routing tanpa memanggil model atau menulis report:
 ```bash
@@ -205,7 +231,7 @@ sedangkan hanya CLI error yang dijalankan kembali:
 python3 -m benchmarks.runner \
   --models "Gemini 3.8 Flash (High), Gemini 3.7 Flash (High), Gemini 3.6 Flash (High), Gemini 3.1 Pro (High)" \
   --timeout 600 \
-  --resume-from benchmarks/reports/benchmark_data_20260907_045613_490019.json \
+  --resume-from "benchmarks/reports/benchmark_checkpoint_<run_id>.json" \
   --publish
 ```
 

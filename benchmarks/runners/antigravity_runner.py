@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -12,6 +13,29 @@ from benchmarks.models import TokenUsage
 from benchmarks.runners.base_runner import BaseRunner
 
 logger = logging.getLogger(__name__)
+
+
+def execute_agy(cmd: list[str], *, timeout: int, cwd: str) -> subprocess.CompletedProcess:
+    """Own the process group so an expired CLI cannot leave tools running."""
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cwd=cwd, start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except BaseException as exc:
+        try:
+            if os.name == 'posix':
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+        except ProcessLookupError:
+            pass
+        stdout, stderr = process.communicate()
+        if isinstance(exc, subprocess.TimeoutExpired):
+            exc.output, exc.stderr = stdout, stderr
+        raise
+    return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
 
 
 class AntigravityRunner(BaseRunner):
@@ -162,11 +186,9 @@ class AntigravityRunner(BaseRunner):
         pricing = self.get_pricing(model)
 
         try:
-            process = subprocess.run(
+            process = execute_agy(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
+                timeout=timeout_seconds + 10,
                 cwd=cwd or os.getcwd(),
             )
             duration = time.perf_counter() - start_time
@@ -174,14 +196,15 @@ class AntigravityRunner(BaseRunner):
             stdout = process.stdout.strip()
             stderr = process.stderr.strip()
 
-            if process.returncode != 0:
-                err_msg = stderr or stdout or f"Process exited with code {process.returncode}"
-                return "", token_usage, duration, err_msg
-
             try:
                 data = json.loads(stdout)
+                if not isinstance(data, dict) or not isinstance(data.get('usage', {}), dict):
+                    return '', token_usage, duration, 'Malformed AGY JSON payload.'
                 response_text = data.get("response", "")
                 usage_data = data.get("usage", {})
+                if any(not isinstance(value, int) or isinstance(value, bool) or value < 0
+                       for key, value in usage_data.items() if key.endswith('_tokens')):
+                    return '', token_usage, duration, 'Invalid AGY token usage.'
 
                 token_usage.input_tokens = usage_data.get("input_tokens", 0)
                 token_usage.thinking_tokens = usage_data.get("thinking_tokens", 0)
@@ -198,9 +221,12 @@ class AntigravityRunner(BaseRunner):
                 )
                 token_usage.telemetry_source = "agy-json"
                 token_usage.telemetry_complete = all(
-                    key in usage_data for key in ("input_tokens", "output_tokens")
+                    key in usage_data for key in ("input_tokens", "output_tokens", "thinking_tokens", "cache_read_tokens")
                 )
                 token_usage.calculate_cost(pricing)
+
+                if duration > timeout_seconds:
+                    return '', token_usage, duration, f'TIMEOUT: Process exceeded {timeout_seconds}s limit'
 
                 agy_error = data.get("error")
                 agy_status = str(data.get("status", "")).upper()
@@ -211,6 +237,8 @@ class AntigravityRunner(BaseRunner):
                         duration,
                         str(agy_error or "AGY reported an error status."),
                     )
+                if process.returncode != 0:
+                    return '', token_usage, duration, stderr or f'Process exited with code {process.returncode}'
 
                 permission_error = self._permission_denial(stderr)
                 if permission_error:
@@ -241,16 +269,32 @@ class AntigravityRunner(BaseRunner):
             except json.JSONDecodeError:
                 # If stdout is plain text
                 token_usage.calculate_cost(pricing)
+                if duration > timeout_seconds:
+                    return '', token_usage, duration, f'TIMEOUT: Process exceeded {timeout_seconds}s limit'
+                if process.returncode != 0:
+                    return '', token_usage, duration, stderr or stdout or f'Process exited with code {process.returncode}'
+                if not stdout:
+                    return '', token_usage, duration, 'AGY completed without a final text response.'
                 permission_error = self._permission_denial(stderr)
                 if permission_error:
                     return "", token_usage, duration, permission_error
                 return stdout, token_usage, duration, None
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             duration = time.perf_counter() - start_time
-            token_usage.input_tokens = self.estimate_prompt_tokens(prompt)
-            token_usage.total_tokens = token_usage.input_tokens
-            token_usage.telemetry_source = "prompt-estimate"
+            # A complete usage object may survive in output even if completion
+            # did not. Never invent token counts for the lost portion.
+            try:
+                partial = json.loads(exc.output or '{}').get('usage', {})
+                token_usage.input_tokens = partial.get('input_tokens', 0)
+                token_usage.thinking_tokens = partial.get('thinking_tokens', 0)
+                token_usage.output_tokens = max(partial.get('output_tokens', 0) - token_usage.thinking_tokens, 0)
+                token_usage.cache_read_tokens = partial.get('cache_read_tokens', 0)
+                token_usage.total_tokens = sum((token_usage.input_tokens, token_usage.output_tokens, token_usage.thinking_tokens, token_usage.cache_read_tokens))
+            except (ValueError, TypeError, AttributeError):
+                pass
+            token_usage.telemetry_source = 'agy-partial'
+            token_usage.telemetry_complete = False
             token_usage.calculate_cost(pricing)
             return "", token_usage, duration, f"TIMEOUT: Process exceeded {timeout_seconds}s limit"
         except Exception as e:

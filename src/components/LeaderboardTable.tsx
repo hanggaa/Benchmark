@@ -162,8 +162,9 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                       <span className={`font-bold ${
                         s.weighted_pass_rate >= 90 ? 'text-telemetry-green' : s.weighted_pass_rate > 0 ? 'text-amber-400' : 'text-hazard-red'
                       }`}>
-                        [{s.weighted_pass_rate}% // RAW {s.pass_rate}%]
+                        {s.total_cases ? `[${s.weighted_pass_rate}% // RAW ${s.pass_rate}%]` : 'N/A'}
                       </span>
+                      {s.cli_error_cases > 0 && <div className="text-xs text-amber-400">{s.cli_error_cases} CLI errors excluded</div>}
                     </td>
 
                     {/* Thinking Tokens */}

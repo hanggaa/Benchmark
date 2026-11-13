@@ -18,8 +18,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 def extract_python_code(text: str) -> str:
     """Extracts the first valid python code block or returns the text if no code fence."""
-    pattern = r"```(?:python|py)?\s*\n(.*?)```"
-    matches = re.findall(pattern, text, re.DOTALL)
+    # Consume each complete fence, including non-Python blocks: a closing
+    # fence must never become the opening fence around intervening prose.
+    blocks = re.findall(r"^[ \t]*(`{3,}|~{3,})([^\n]*)\n(.*?)^[ \t]*\1[ \t]*$", text, re.M | re.S)
+    matches = [body for _, label, body in blocks if label.strip().lower() in ('python', 'py')]
+    matches += [body for _, label, body in blocks if not label.strip()]
     for match in matches:
         candidate = match.strip()
         try:
@@ -27,8 +30,12 @@ def extract_python_code(text: str) -> str:
         except SyntaxError:
             continue
         return candidate
-    if matches:
-        return matches[0].strip()
+    if blocks:
+        return matches[0].strip() if matches else ''
+    try:
+        ast.parse(text.strip())
+    except SyntaxError:
+        return ''
     return text.strip()
 
 
