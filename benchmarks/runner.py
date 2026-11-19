@@ -30,6 +30,20 @@ from benchmarks.runners.opencode_runner import OpenCodeRunner
 
 SUPPORTED_EVALUATORS = {"python_unit_test", "schema_check", "workspace_patch_test"}
 SUPPORTED_DIFFICULTIES = {"easy", "medium", "hard"}
+SUITE_PRESETS = {
+    "core10-v1": [
+        "agentic_01_multifile_regression",
+        "agentic_02_indirect_injection",
+        "logic_02_topo_cycle",
+        "logic_04_async_worker_pool",
+        "logic_06_zero_copy_parser",
+        "research_01_prd_structure",
+        "security_02_tenant_authz",
+        "stateful_01_payment_ledger",
+        "stateful_02_saga_recovery",
+        "tool_02_ast_pruner",
+    ],
+}
 
 
 def hash_workspace_fixture(fixture: Path) -> str:
@@ -465,7 +479,8 @@ def _run_metadata(
         f"{case.id}:{case.case_hash}" for case in sorted(test_cases, key=lambda c: c.id)
     )
     return {
-        'format_version': 2,
+        'format_version': 3,
+        'suite_preset': None,
         'harness_hash': hashlib.sha256(b''.join(
             path.read_bytes() for path in sorted(Path(__file__).parent.rglob('*.py'))
             if not {'tests', 'fixtures', '__pycache__'} & set(path.parts)
@@ -553,7 +568,7 @@ def _load_resume_results(
     if not isinstance(source_metadata, dict):
         raise BenchmarkConfigurationError("Resume report metadata must be an object.")
     compatibility_fields = (
-        'format_version', 'suite_hash', 'config_hash', 'harness_hash',
+        'format_version', 'suite_hash', 'suite_preset', 'config_hash', 'harness_hash',
         'cli_versions', 'timeout_limits', 'pricing_snapshot', 'python_version', 'platform',
     )
     for field in compatibility_fields:
@@ -598,6 +613,19 @@ def _load_resume_results(
             6,
         ),
     }
+    previous_error_keys = source_metadata.get('prior_cli_error_keys', [])
+    if not isinstance(previous_error_keys, list) or any(
+        not isinstance(key, list)
+        or any(part is not None and not isinstance(part, str) for part in key)
+        or tuple(key) not in expected_keys
+        for key in previous_error_keys
+    ):
+        raise BenchmarkConfigurationError('Resume report has invalid prior CLI error keys.')
+    error_keys = {tuple(key) for key in previous_error_keys}
+    error_keys.update(_result_key(r.cli, r.model, r.effort, r.case_id) for r in prior_errors)
+    resume_metadata['prior_cli_error_keys'] = [
+        list(key) for key in sorted(error_keys, key=repr)
+    ]
     return reusable, resume_metadata
 
 
@@ -613,14 +641,17 @@ def run_benchmark(
     publish: bool = False,
     private_tests_dir: Optional[str] = None,
     resume_from: Optional[str] = None,
+    suite_preset: Optional[str] = None,
 ) -> List[BenchmarkResult]:
     if not models or any(not model.strip() for model in models):
         raise BenchmarkConfigurationError('At least one non-empty model is required.')
     if timeout_override is not None and (not isinstance(timeout_override, int) or isinstance(timeout_override, bool) or timeout_override <= 0):
         raise BenchmarkConfigurationError('Timeout must be a positive integer.')
     config = load_config()
-    test_cases = load_test_cases(categories, case_ids, private_tests_dir)
-
+    if suite_preset is not None and suite_preset not in SUITE_PRESETS:
+        raise BenchmarkConfigurationError(f"Unknown suite preset: {suite_preset}")
+    if suite_preset and (categories or case_ids):
+        raise BenchmarkConfigurationError("--suite cannot be combined with --case or --category.")
     if publish and (categories or case_ids):
         raise BenchmarkConfigurationError(
             "Refusing to publish a filtered run. Remove --category/--case."
@@ -629,6 +660,8 @@ def run_benchmark(
         raise BenchmarkConfigurationError(
             "--resume-from cannot be combined with --dry-run."
         )
+    preset_cases = SUITE_PRESETS[suite_preset] if suite_preset else case_ids
+    test_cases = load_test_cases(categories, preset_cases, private_tests_dir)
 
     if not test_cases:
         print("❌ No matching test cases found.")
@@ -671,6 +704,8 @@ def run_benchmark(
         else ""
     )
     print(f"• Test Cases: {len(test_cases)} case(s)")
+    if suite_preset:
+        print(f"• Suite: {suite_preset}")
     if timeout_display:
         print(timeout_display, end="")
     print("=" * 70)
@@ -687,6 +722,7 @@ def run_benchmark(
     results: List[BenchmarkResult] = []
     runners_cache: Dict[str, Any] = {}
     run_metadata = _run_metadata(test_cases, execution_plan)
+    run_metadata['suite_preset'] = suite_preset
     run_metadata['timeout_limits'] = {tc.id: timeout_override or tc.timeout_seconds for tc in test_cases}
     reusable_results: Dict[
         Tuple[str, str, Optional[str], str], BenchmarkResult
@@ -700,6 +736,7 @@ def run_benchmark(
             f"• Resume: reusing {len(reusable_results)} result(s), rerunning "
             f"{resume_metadata['rerun_result_count']} CLI error(s)."
         )
+    prior_cli_errors = {tuple(key) for key in run_metadata.get('prior_cli_error_keys', [])}
 
     out_path = Path(output_dir) if output_dir else Path(__file__).parent / 'reports'
     out_path.mkdir(parents=True, exist_ok=True)
@@ -717,6 +754,10 @@ def run_benchmark(
 
     class CheckpointResults(list):
         def append(self, result: BenchmarkResult) -> None:
+            key = _result_key(result.cli, result.model, result.effort, result.case_id)
+            result.metadata['first_attempt_passed'] = (
+                result.passed and not result.error_message and key not in prior_cli_errors
+            )
             pricing_runner = AntigravityRunner(config)
             result.metadata['pricing'] = {
                 **pricing_runner.pricing_provenance(result.model),
@@ -726,6 +767,12 @@ def run_benchmark(
                 'timeout' if result.error_message and 'timeout' in result.error_message.lower()
                 else 'cli_error' if result.error_message else 'assertion_failure' if not result.passed else None
             )
+            if not result.error_message and not result.passed:
+                if result.evaluator_logs.startswith('Workspace regression tests failed:'):
+                    result.metadata['error_kind'] = 'workspace_regression_failure'
+                elif any(line.startswith(('Files changed outside allowlist:', 'Forbidden canary'))
+                         for line in result.evaluator_logs.splitlines()):
+                    result.metadata['error_kind'] = 'workspace_policy_violation'
             super().append(result)
             save_checkpoint()
 
@@ -964,9 +1011,11 @@ def run_benchmark(
                 "Refusing to publish a run containing "
                 f"{len(cli_errors)} CLI/infrastructure error(s): {examples}."
             )
-        latest_md = out_path / "latest_report.md"
+        suffix = f"_{suite_preset}" if suite_preset else ""
+        latest_md = out_path / f"latest_report{suffix}.md"
         atomic_write_text(latest_md, md_report)
-        web_data_file = Path(__file__).parent.parent / "src" / "data" / "benchmark-data.json"
+        data_suffix = f"-{suite_preset}" if suite_preset else ""
+        web_data_file = Path(__file__).parent.parent / "src" / "data" / f"benchmark-data{data_suffix}.json"
         web_data_file.parent.mkdir(parents=True, exist_ok=True)
         JSONReporter.save_report(results, web_data_file)
 
@@ -989,14 +1038,15 @@ def main():
     parser.add_argument("--models", required=True, help="Comma-separated model names (e.g. 'Gemini 3.7 Flash (High), gpt-5.6-sol --effort high')")
     parser.add_argument("--effort", default=None, help="Reasoning effort (low, medium, high)")
     parser.add_argument("--category", default=None, help="Filter by category (for example: logic, security, stateful_systems, agentic_repo)")
-    parser.add_argument("--case", default=None, help="Filter by specific case ID")
+    parser.add_argument("--case", default=None, help="Filter by comma-separated case IDs")
+    parser.add_argument("--suite", choices=SUITE_PRESETS, help="Run a named case preset")
     parser.add_argument("--timeout", type=int, default=None, help="Global timeout limit in seconds (e.g. 300, 360, 480)")
     parser.add_argument("--output-dir", default=None, help="Output directory for reports")
     parser.add_argument("--dry-run", action="store_true", help="List test cases without executing LLM calls")
     parser.add_argument(
         "--publish",
         action="store_true",
-        help="Publish a complete, unfiltered run to the web dashboard",
+        help="Publish a complete full suite or named preset to the web dashboard",
     )
     parser.add_argument(
         "--private-tests-dir",
@@ -1028,6 +1078,7 @@ def main():
         publish=args.publish,
         private_tests_dir=args.private_tests_dir,
         resume_from=args.resume_from,
+        suite_preset=args.suite,
     )
 
 

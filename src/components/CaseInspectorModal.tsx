@@ -1,129 +1,53 @@
-import React from 'react';
-import { BenchmarkItem } from '../types';
+import { useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
+import { cost, outcome, statusLabels } from '../reportData';
+import type { BenchmarkItem } from '../types';
 
-interface CaseInspectorModalProps {
-  item: BenchmarkItem | null;
-  onClose: () => void;
-}
-
-export const CaseInspectorModal: React.FC<CaseInspectorModalProps> = ({ item, onClose }) => {
-  if (!item) return null;
-
-  const getStatusBadge = () => {
-    if (item.passed) {
-      return {
-        label: '✓ MISSION VERIFIED',
-        cls: 'bg-telemetry-green text-black',
-      };
-    }
-    const combinedLogs = `${item.error_message || ''} ${item.evaluator_logs || ''} ${item.raw_response || ''}`.toLowerCase();
-    if (combinedLogs.includes('timeout') || combinedLogs.includes('timed out') || item.duration_seconds >= 120) {
-      return {
-        label: '⏱️ PROCESS TIMEOUT',
-        cls: 'bg-amber-400 text-black',
-      };
-    }
-    if (combinedLogs.includes('sorry') || combinedLogs.includes('cannot fulfill') || combinedLogs.includes('unable to write') || combinedLogs.includes("can't help") || combinedLogs.includes('cannot help')) {
-      return {
-        label: '🛡️ GUARDRAIL REFUSAL',
-        cls: 'bg-purple-600 text-white',
-      };
-    }
-    return {
-      label: '✗ LOGIC / ASSERTION FAILURE',
-      cls: 'bg-hazard-red text-black',
+export function CaseInspectorModal({ item, onClose }: { item: BenchmarkItem; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element || element.open) return;
+    const trigger = document.activeElement;
+    element.showModal();
+    return () => {
+      element.close();
+      if (trigger instanceof HTMLElement) trigger.focus();
     };
-  };
+  }, []);
 
-  const badge = getStatusBadge();
+  const status = outcome(item);
+  const tokens = item.token_usage;
+  const failureKind = item.metadata?.error_kind;
+  const formatTokens = (count: number) => count.toLocaleString('en-US');
+  const label = failureKind === 'workspace_policy_violation' ? 'Workspace policy violation'
+    : failureKind === 'workspace_regression_failure' ? 'Workspace regression failure' : statusLabels[status];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm font-mono">
-      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col border border-hazard-red bg-substrate-card text-phosphor-white p-6 overflow-hidden">
-        
-        {/* Corner Crosshairs */}
-        <span className="absolute -top-2.5 -left-2 text-hazard-red font-bold text-xs">+</span>
-        <span className="absolute -top-2.5 -right-2 text-hazard-red font-bold text-xs">+</span>
-        <span className="absolute -bottom-2.5 -left-2 text-hazard-red font-bold text-xs">+</span>
-        <span className="absolute -bottom-2.5 -right-2 text-hazard-red font-bold text-xs">+</span>
-
-        {/* Modal Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-substrate-border pb-4 mb-4 shrink-0">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`px-2 py-0.5 text-xs font-bold uppercase ${badge.cls}`}>
-                {badge.label}
-              </span>
-              <span className="text-[10px] border border-substrate-borderStrong px-2 py-0.5 uppercase text-phosphor-dim">
-                MODULE: {item.category.toUpperCase()}
-              </span>
-            </div>
-            <h3 className="text-lg sm:text-xl font-bold uppercase text-phosphor-white">
-              {item.case_title}
-            </h3>
-            <p className="text-[10px] uppercase text-phosphor-dim mt-0.5">
-              UNIT: <span className="text-phosphor-white font-bold">{item.model}</span> // HARNESS: <span className="text-phosphor-white font-bold">{item.cli}</span>
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="border border-substrate-borderStrong bg-substrate-dark px-3 py-1 text-xs hover:bg-hazard-red hover:text-black hover:border-hazard-red transition-colors"
-          >
-            [ ESC // CLOSE ]
-          </button>
-        </div>
-
-        {/* Telemetry Indicator Readout */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-substrate-border border border-substrate-border mb-4 shrink-0 text-[10px] uppercase">
-          <div className="bg-substrate-dark p-3">
-            <span className="text-phosphor-subtle block mb-0.5">DURATION:</span>
-            <span className="text-phosphor-white font-bold text-sm">{item.duration_seconds.toFixed(2)}S</span>
-          </div>
-          <div className="bg-substrate-dark p-3">
-            <span className="text-phosphor-subtle block mb-0.5">THINKING TOKENS:</span>
-            <span className="text-hazard-red font-bold text-sm">{item.token_usage.thinking_tokens.toLocaleString()}</span>
-          </div>
-          <div className="bg-substrate-dark p-3">
-            <span className="text-phosphor-subtle block mb-0.5">OUTPUT TOKENS:</span>
-            <span className="text-phosphor-white font-bold text-sm">{item.token_usage.output_tokens.toLocaleString()}</span>
-          </div>
-          <div className="bg-substrate-dark p-3">
-            <span className="text-phosphor-subtle block mb-0.5">ESTIMATED COST:</span>
-            <span className="text-phosphor-white font-bold text-sm">${item.token_usage.estimated_cost_usd.toFixed(5)}</span>
-          </div>
-        </div>
-
-        {/* Terminal Logs & Output */}
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2 text-xs">
-          {item.evaluator_logs && (
-            <div>
-              <div className="text-[10px] uppercase tracking-widest text-hazard-red font-bold mb-1">
-                // SANDBOX EVALUATOR TELEMETRY:
-              </div>
-              <pre className={`p-3 border overflow-x-auto text-[11px] ${
-                item.passed
-                  ? 'bg-substrate-dark border-telemetry-green/40 text-telemetry-green'
-                  : 'bg-substrate-dark border-hazard-red/40 text-hazard-red'
-              }`}>
-                {item.evaluator_logs}
-              </pre>
-            </div>
-          )}
-
-          {item.raw_response && (
-            <div>
-              <div className="text-[10px] uppercase tracking-widest text-phosphor-dim font-bold mb-1">
-                // RAW GENERATED OUTPUT:
-              </div>
-              <pre className="p-3 border border-substrate-border bg-substrate-dark text-[11px] text-phosphor-dim overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                {item.raw_response}
-              </pre>
-            </div>
-          )}
-        </div>
-
-      </div>
-    </div>
+    <dialog ref={dialog} className="case-dialog" aria-labelledby="case-title" onCancel={(event) => {
+      event.preventDefault();
+      onClose();
+    }}>
+      <header>
+        <span className={'status ' + status}>{label}</span>
+        <button type="button" className="button close-button" onClick={onClose} aria-label="Close case details" autoFocus>
+          <X size={19} aria-hidden="true" />
+        </button>
+      </header>
+      <h2 id="case-title">{item.case_title}</h2>
+      <p>{item.model} · {item.cli}{item.effort ? ' · ' + item.effort : ''}</p>
+      <dl className="inspector-stats">
+        <div><dt>Duration</dt><dd>{item.duration_seconds.toFixed(2)} s</dd></div>
+        <div><dt>Est. API cost</dt><dd>{cost.format(tokens.estimated_cost_usd)}{!tokens.telemetry_complete && ' (partial)'}</dd></div>
+        <div><dt>Input</dt><dd>{formatTokens(tokens.input_tokens)}</dd></div>
+        <div><dt>Output</dt><dd>{formatTokens(tokens.output_tokens)}</dd></div>
+        <div><dt>Thinking</dt><dd>{formatTokens(tokens.thinking_tokens)}</dd></div>
+        <div><dt>Cache read</dt><dd>{formatTokens(tokens.cache_read_tokens)}</dd></div>
+      </dl>
+      <h3>{item.error_message ? 'CLI error' : 'Evaluator log'}</h3>
+      <pre>{item.error_message || item.evaluator_logs || 'No log recorded.'}</pre>
+      {Boolean(item.metadata?.offline_reevaluation) && <p>Reevaluated offline using the saved response.</p>}
+      {item.raw_response && <details><summary>Model response</summary><pre>{item.raw_response}</pre></details>}
+    </dialog>
   );
-};
+}

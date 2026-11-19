@@ -68,8 +68,15 @@ export function aggregateBenchmarks(benchmarkItems: BenchmarkItem[]): Aggregated
       categoryMap[c].rate = Math.round((categoryMap[c].passed / categoryMap[c].total) * 100);
     });
 
+    const firstAttempts = items.map((item) => {
+      const recorded = item.metadata?.first_attempt_passed;
+      if (typeof recorded === 'boolean') return recorded;
+      return item.metadata?.prior_cli_error_attempt_count ? null : item.passed && !item.error_message;
+    });
     res.push({
       cli_error_cases: items.length - total,
+      first_attempt_passes: firstAttempts.includes(null) ? null : firstAttempts.filter(Boolean).length,
+      attempted_cases: items.length,
       model,
       cli,
       effort: groupedEffort,

@@ -478,6 +478,9 @@ class NewCaseLoadingTests(unittest.TestCase):
         self.assertTrue(results[0].metadata["result_reused"])
         self.assertEqual(results[0].metadata["reused_result_count"], 1)
         self.assertEqual(results[0].metadata["prior_cli_error_attempt_cost_usd"], 0.25)
+        self.assertTrue(results[0].metadata["first_attempt_passed"])
+        self.assertFalse(results[1].metadata["first_attempt_passed"])
+        self.assertTrue(results[1].passed)
 
     def test_publish_rejects_filtered_runs_before_model_calls(self) -> None:
         with self.assertRaises(BenchmarkConfigurationError):

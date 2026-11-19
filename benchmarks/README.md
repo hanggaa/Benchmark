@@ -88,6 +88,34 @@ python3 -m benchmarks.runner \
 
 ## 🚀 Panduan Eksekusi Benchmark
 
+### Core 10 untuk Gemini 4
+
+Preset `core10-v1` menjalankan 10 kasus per model. Satu putaran dengan tiga
+model menghasilkan 30 percobaan. Cek katalog dengan `agy models` dan tambahkan
+`--dry-run` untuk melihat pilihan kasus serta sumber tes tanpa memanggil model.
+
+```bash
+python3 -m benchmarks.runner --suite core10-v1 \
+  --models "Gemini 4 Neon (High), Gemini 4 Hydrogen (High), Gemini 4 Argon (High)" \
+  --timeout 600
+```
+
+Gunakan konfigurasi sandbox, versi AGY, batas waktu, dan sumber tes yang sama
+dalam satu perbandingan. `First-Attempt Success` memakai seluruh kasus sebagai
+penyebut. `Pass Rate` memakai kasus yang berhasil dinilai. Ketika menggunakan
+`--resume-from`, sertakan preset dan pengaturan awal. Hasil retry memperbarui
+akurasi, sementara metrik percobaan pertama tetap mengikuti hasil awal.
+
+Untuk benchmark lokal dengan variasi tambahan, tambahkan
+`--private-tests-dir benchmarks/private_tests` jika direktori itu tersedia. Lihat label
+`tests:` pada dry-run untuk memastikan kasus yang menggunakan override.
+Bandingkan hanya putaran dengan suite hash dan sumber tes yang sama.
+
+Menambahkan `--publish` pada putaran lengkap tanpa CLI error menulis
+`latest_report_core10-v1.md` dan dataset untuk pilihan **Core 10 (v1)** di
+dashboard. Filter ad hoc `--case` dan `--category` menghasilkan laporan lokal.
+Tarif Neon, Hydrogen, dan Argon adalah estimasi setara API Standard dalam USD.
+
 ### Gemini 4 Argon (High)
 
 Gunakan nama tampilan AGY `Gemini 4 Argon (High)`; effort `high` otomatis
@@ -261,6 +289,11 @@ python3 -m benchmarks.runner \
 npm run dev
 ```
 
+Gunakan **Open local report** untuk memeriksa JSON laporan atau checkpoint
+di halaman **Leaderboard** dan **Data**. Pratinjau menampilkan ID run serta
+jumlah hasil yang tersimpan. Berkas tetap berada di browser dan tidak ikut
+ke build produksi.
+
 ### Deploy ke GitHub Pages (`benchmarks.hanggaa.xyz`)
 ```bash
 npm run deploy
@@ -334,3 +367,11 @@ Adapter tidak menggunakan flag bypass permission. Karena `opencode --pure`
 bukan filesystem sandbox, case `workspace_patch_test` melalui OpenCode ditolak
 secara default. Gunakan `BENCHMARK_ALLOW_UNSAFE_OPENCODE=1` hanya di container
 eksternal sekali pakai.
+
+### Resume
+
+python3 -m benchmarks.runner \
+  --suite core10-v1 \
+  --models "Gemini 4 Neon (High), Gemini 4 Hydrogen (High), Gemini 4 Argon (High)" \
+  --timeout 600 \
+  --resume-from benchmarks/reports/benchmark_checkpoint_8e6afe30-67b2-4e14-a1c2-8760d6db014f.json

@@ -29,6 +29,8 @@ export interface BenchmarkItem {
 
 export interface AggregatedModelSummary {
   cli_error_cases: number;
+  first_attempt_passes: number | null;
+  attempted_cases: number;
   model: string;
   cli: string;
   effort?: string | null;

@@ -6,7 +6,7 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({ totalCases }) => {
   return (
-    <section className="relative pt-28 pb-16 px-6 max-w-7xl mx-auto font-mono">
+    <section className="relative pt-6 pb-16 px-6 max-w-7xl mx-auto font-mono">
       
       {/* Background CRT Scanlines */}
       <div className="fixed inset-0 scanlines-overlay pointer-events-none z-40 opacity-30" />

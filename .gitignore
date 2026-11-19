@@ -13,6 +13,7 @@ node_modules/
 
 # Python
 __pycache__/
+/benchmarks/private_tests/
 
 # Logs
 logs/

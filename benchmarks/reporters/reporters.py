@@ -145,6 +145,8 @@ class MarkdownReporter:
             md.append("## Run Provenance")
             md.append("")
             md.append(f"- Run ID: `{metadata.get('run_id', 'unknown')}`")
+            if metadata.get('suite_preset'):
+                md.append(f"- Suite preset: `{metadata['suite_preset']}`")
             md.append(f"- Suite hash: `{metadata.get('suite_hash', 'unknown')}`")
             md.append(f"- Git commit: `{metadata.get('git_commit', 'unknown')}`")
             md.append(f"- Git working tree dirty: `{metadata.get('git_dirty', 'unknown')}`")
@@ -184,13 +186,24 @@ class MarkdownReporter:
             md.append("")
         md.append("## 📊 Overall Model Comparison")
         md.append("")
-        md.append("| Model | CLI | Effort | Pass Rate | Weighted Accuracy | CLI Errors | Avg Latency | Thinking Tokens | Total Cost ($) | Efficiency Score |")
-        md.append("| :--- | :--- | :--- | :--- | :--- | :---: | :--- | :--- | :--- | :--- |")
+        md.append("| Model | CLI | Effort | First-Attempt Success | Pass Rate | Weighted Accuracy | CLI Errors | Avg Latency | Thinking Tokens | Total Cost ($) | Efficiency Score |")
+        md.append("| :--- | :--- | :--- | :--- | :--- | :--- | :---: | :--- | :--- | :--- | :--- |")
 
         for s in summaries:
             effort_str = s.effort or "-"
             key = (s.cli, s.model, s.effort or "default")
             cli_errors = cli_error_counts[key]
+            attempts = grouped[key]
+            first_passes = [
+                item.metadata.get('first_attempt_passed', None
+                                  if item.metadata.get('prior_cli_error_attempt_count')
+                                  else item.passed and not item.error_message)
+                for item in attempts
+            ]
+            first_attempt_str = (
+                "N/A" if None in first_passes
+                else f"**{first_passes.count(True) / len(attempts):.1%}** ({first_passes.count(True)}/{len(attempts)})"
+            )
             pass_str = (
                 f"**{s.pass_rate}%** ({s.passed_cases}/{s.total_cases})"
                 if s.total_cases
@@ -210,7 +223,7 @@ class MarkdownReporter:
                 )
             )
             md.append(
-                f"| **{s.model}** | `{s.cli}` | `{effort_str}` | {pass_str} | "
+                f"| **{s.model}** | `{s.cli}` | `{effort_str}` | {first_attempt_str} | {pass_str} | "
                 f"{weighted_str} | {cli_errors} | {s.avg_duration_seconds}s | "
                 f"{s.total_thinking_tokens:,} | {cost_str} | {efficiency_str} |"
             )
@@ -277,6 +290,12 @@ class MarkdownReporter:
                 f"Cost: ${r.token_usage.estimated_cost_usd:.5f}"
             )
             if not r.passed:
+                failure_kind = {
+                    'workspace_policy_violation': 'Workspace policy violation',
+                    'workspace_regression_failure': 'Workspace regression failure',
+                }.get(r.metadata.get('error_kind'))
+                if failure_kind:
+                    md.append(f"- **Failure type**: {failure_kind}")
                 md.append(f"- **Error Details**:\n```\n{r.evaluator_logs or r.error_message or 'Test failed.'}\n```")
             md.append("")
 

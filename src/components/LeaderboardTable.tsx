@@ -146,7 +146,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                             {s.model}
                           </div>
                           <div className="text-[10px] text-phosphor-subtle uppercase">
-                            {s.total_cases} SCENARIOS PROCESSED
+                            {s.first_attempt_passes === null ? 'N/A' : `${s.first_attempt_passes}/${s.attempted_cases}`} first-attempt passes
                           </div>
                         </div>
                       </div>

@@ -25,6 +25,8 @@ class HardeningTests(unittest.TestCase):
     def test_pricing_period_switch(self):
         runner = AntigravityRunner(load_config())
         with patch('benchmarks.runners.base_runner.datetime') as clock:
+            clock.now.return_value = datetime(2026, 11, 30, 23, 59, tzinfo=timezone.utc)
+            self.assertEqual(runner.get_pricing('Gemini 4 Argon (High)')['output'], 10)
             clock.now.return_value = datetime(2026, 12, 1, tzinfo=timezone.utc)
             self.assertEqual(runner.get_pricing('Gemini 4 Argon (High)')['output'], 20)
             self.assertEqual(runner.get_pricing('Gemini 3.8 Flash (High)')['cache_read'], .075)
@@ -54,15 +56,52 @@ class HardeningTests(unittest.TestCase):
         self.assertEqual(summary['total_cases'], 2)
         self.assertEqual(summary['cli_error_cases'], 1)
         self.assertEqual(summary['pass_rate'], 50)
+        self.assertEqual(summary['first_attempt_passes'], 1)
+        self.assertEqual(summary['attempted_cases'], 3)
         self.assertEqual(summary['total_cost_usd'], .3)
-        self.assertIn('**50.0%** (1/2)', MarkdownReporter.generate_report(rows))
+        report = MarkdownReporter.generate_report(rows)
+        self.assertIn('**33.3%** (1/3) | **50.0%** (1/2)', report)
 
     def test_argon_and_flash_use_configured_rates(self):
         runner = AntigravityRunner(load_config())
-        self.assertEqual(runner.get_pricing('Gemini 3.8 Flash (High)')['cache_read'], .075)
-        self.assertEqual(runner.get_pricing('Gemini 4 Argon (High)')['output'], 10)
+        with patch('benchmarks.runners.base_runner.datetime') as clock:
+            clock.now.return_value = datetime(2026, 11, 19, tzinfo=timezone.utc)
+            self.assertEqual(runner.get_pricing('Gemini 3.8 Flash (High)')['cache_read'], .075)
+            self.assertEqual(runner.get_pricing('Gemini 4 Argon (High)')['output'], 10)
         self.assertTrue(runner.pricing_provenance('Gemini 4 Argon (High)')['verified'])
         self.assertFalse(runner.pricing_provenance('Gemini Unknown')['verified'])
+
+    def test_new_gemini_models_use_verified_rates(self):
+        runner = AntigravityRunner(load_config())
+        for model, input_rate, output_rate, cache_rate in (
+            ('Gemini 4 Neon (High)', 3, 15, .15),
+            ('Gemini 4 Hydrogen (High)', 1.5, 7.5, .075),
+        ):
+            with self.subTest(model=model):
+                self.assertTrue(runner.pricing_provenance(model)['verified'])
+                self.assertEqual(runner.get_pricing(model), {
+                    'input': input_rate, 'output': output_rate,
+                    'thinking': output_rate, 'cache_read': cache_rate,
+                })
+
+    def test_named_suite_publishes_to_separate_dashboard_dataset(self):
+        case = TestCase(id='example', title='Test', category='logic', description='',
+                        prompt='solve', evaluator_type='python_unit_test', test_code='assert True',
+                        case_hash='hash')
+        with tempfile.TemporaryDirectory() as directory, \
+             patch('benchmarks.runner.load_test_cases', return_value=[case]) as load_cases, \
+             patch('benchmarks.runner.get_runner') as runner, \
+             patch('benchmarks.runner.UnitTestEvaluator.evaluate', return_value=(True, 'ok')), \
+             patch('benchmarks.runner.JSONReporter.save_report') as save_report, \
+             redirect_stdout(StringIO()):
+            runner.return_value.run_prompt.return_value = ('answer', TokenUsage(), .1, None)
+            results = run_benchmark(['agy'], ['Gemini 4 Neon (High)'], output_dir=directory,
+                                    suite_preset='core10-v1', publish=True)
+            self.assertEqual(len(load_cases.call_args.args[1]), 10)
+            self.assertEqual(results[0].metadata['suite_preset'], 'core10-v1')
+            self.assertEqual(save_report.call_args.args[1].name, 'benchmark-data-core10-v1.json')
+            self.assertTrue((Path(directory) / 'latest_report_core10-v1.md').exists())
+            self.assertFalse((Path(directory) / 'latest_report.md').exists())
 
     def test_effort_conflict_and_unknown_filters_fail(self):
         with self.assertRaises(BenchmarkConfigurationError):
